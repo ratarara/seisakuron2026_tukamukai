@@ -35,6 +35,7 @@ Ubuntu 24.04 をインストールしただけの、何も設定していないP
 
 - **Ubuntu 24.04 LTS** がインストール済みであること
 - **GitHub アカウント**を持っていること
+- Claude Code を使うための **Claude アカウント**（Pro 以上のプラン）を持っていること
 - このリポジトリは Private なので、[@ratarara](https://github.com/ratarara) に GitHub のユーザー名を伝えて **Collaborator に招待**してもらい、届いたメールから招待を承認しておくこと
 
 端末の基本操作：
@@ -58,7 +59,19 @@ Windows とデュアルブートしている場合だけ、時計がずれない
 timedatectl set-local-rtc 1 --adjust-system-clock
 ```
 
-### 2. ROS 2 Jazzy のインストール
+### 2. Claude Code のインストール
+
+ROS 2 を入れる前に Claude Code を入れておくと、この先の手順でエラーが出たときに端末上で Claude に相談しながら進められます。
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+source ~/.bashrc
+claude
+```
+
+初回起動時はブラウザが開くので、Claude のアカウントでログインしてください。以降の手順でつまずいたら、`claude` を起動してエラーメッセージを貼り付けて相談できます（終了は `/exit`）。
+
+### 3. ROS 2 Jazzy のインストール
 
 ```bash
 # ROS 2 の apt リポジトリを追加
@@ -93,7 +106,7 @@ ros2 run demo_nodes_cpp talker
 ros2 run demo_nodes_py listener
 ```
 
-### 3. ワークスペースの作成と自作パッケージでの動作確認
+### 4. ワークスペースの作成と自作パッケージでの動作確認
 
 ワークスペース `~/ros2_ws` を作り、練習用パッケージ `mypkg` を作成します。
 
@@ -184,7 +197,7 @@ ros2 run mypkg talker
 ros2 run mypkg listener
 ```
 
-### 4. Git / GitHub の設定
+### 5. Git / GitHub の設定
 
 ```bash
 # 自分の名前とメールアドレスに書き換えて実行
@@ -212,7 +225,7 @@ gh auth login
 ssh -T git@github.com
 ```
 
-### 5. このリポジトリと CRANE-X7 パッケージの取得・ビルド
+### 6. このリポジトリと CRANE-X7 パッケージの取得・ビルド
 
 ```bash
 cd ~/ros2_ws/src
@@ -227,15 +240,6 @@ cd ~/ros2_ws
 rosdep install -r -y -i --from-paths src
 colcon build --symlink-install
 source ~/.bashrc
-```
-
-### 6. Claude Code のインストール（任意）
-
-```bash
-curl -fsSL https://claude.ai/install.sh | bash
-source ~/.bashrc
-cd ~/ros2_ws/src/seisakuron2026_tukamukai
-claude
 ```
 
 ## 使い方
