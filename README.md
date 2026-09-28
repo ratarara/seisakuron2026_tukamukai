@@ -15,10 +15,10 @@ CRANE-X7 と RealSense を使って、〇〇をするロボットを作ります
 
 | 名前 | GitHub | 担当 |
 |------|--------|------|
-| kaho | [@ratarara](https://github.com/ratarara) | |
-| nanami | [@](https://github.com/) | |
-| madoka | [@](https://github.com/) | |
-| kijunu | [@](https://github.com/) | |
+| 比屋根佳歩 | [@ratarara](https://github.com/ratarara) | |
+| 石川奈々美 | [@](https://github.com/) | |
+| 堀円香 | [@](https://github.com/) | |
+| キンジュンウ | [@](https://github.com/) | |
 
 ## 動作環境
 
