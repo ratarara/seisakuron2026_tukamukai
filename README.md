@@ -29,26 +29,32 @@ CRANE-X7 と RealSense を使って、〇〇をするロボットを作ります
 
 ## セットアップ
 
-```bash
-# ワークスペースの作成
-mkdir -p ~/ros2_ws/src
-cd ~/ros2_ws/src
+ROS 2 Jazzy と GitHub の設定がまだの人は、先に [ROS 2 環境構築](docs/ros2_setup.md) を済ませてください。
 
-# 依存パッケージ
+このリポジトリと CRANE-X7 パッケージの取得・ビルド：
+
+```bash
+cd ~/ros2_ws/src
+gh repo clone ratarara/seisakuron2026_tukamukai
+
+# CRANE-X7 の ROS 2 パッケージ（rt-net）
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_ros.git
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_description.git
 
-# このリポジトリ
-git clone https://github.com/ratarara/seisakuron2026_tukamukai.git
-
-# 依存関係のインストールとビルド
+# 依存パッケージのインストールとビルド（時間がかかります）
 cd ~/ros2_ws
 rosdep install -r -y -i --from-paths src
 colcon build --symlink-install
-source install/setup.bash
+source ~/.bashrc
 ```
 
 ## 使い方
+
+CRANE-X7 を USB で接続したら、ポートへのアクセス権限を付与します（接続するたびに必要）。
+
+```bash
+sudo chmod 666 /dev/ttyUSB0
+```
 
 ```bash
 # 実機の起動
