@@ -16,7 +16,7 @@ CRANE-X7 と RealSense を使って、〇〇をするロボットを作ります
 | 名前 | GitHub | 担当 |
 |------|--------|------|
 | 比屋根佳歩 | [@ratarara](https://github.com/ratarara) | |
-| 石川奈々美 | [@](https://github.com/) | |
+| 石川奈々美 | [@73lkj](https://github.com/73lkj) | |
 | 堀円香 | [@](https://github.com/) | |
 | キンジュンウ | [@](https://github.com/) | |
 
