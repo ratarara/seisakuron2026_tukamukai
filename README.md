@@ -29,6 +29,55 @@ CRANE-X7 と RealSense を使って、〇〇をするロボットを作ります
 
 ## セットアップ
 
+### 1. ROS 2 Jazzy のインストール
+
+Ubuntu 24.04 に ROS 2 Jazzy をインストールします（[公式手順](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html)）。インストール済みの場合は飛ばしてください。
+
+```bash
+# ロケールをUTF-8に設定
+sudo apt update && sudo apt install -y locales
+sudo locale-gen en_US en_US.UTF-8
+sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+export LANG=en_US.UTF-8
+
+# universe リポジトリの有効化
+sudo apt install -y software-properties-common
+sudo add-apt-repository universe
+
+# ROS 2 の apt リポジトリを追加
+sudo apt update && sudo apt install -y curl
+export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F\" '{print $4}')
+curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb"
+sudo dpkg -i /tmp/ros2-apt-source.deb
+
+# ROS 2 Jazzy と開発ツールのインストール
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y ros-jazzy-desktop ros-dev-tools
+
+# 端末を開くたびに ROS 2 を読み込む
+echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+
+# rosdep の初期化（初回のみ）
+sudo rosdep init
+rosdep update
+```
+
+動作確認（2つの端末で実行し、メッセージが届けばOK）：
+
+```bash
+ros2 run demo_nodes_cpp talker
+ros2 run demo_nodes_py listener
+```
+
+### 2. RealSense パッケージのインストール
+
+```bash
+sudo apt install -y ros-jazzy-realsense2-camera
+```
+
+### 3. ワークスペースの作成とビルド
+
 ```bash
 # ワークスペースの作成
 mkdir -p ~/ros2_ws/src
@@ -46,6 +95,14 @@ cd ~/ros2_ws
 rosdep install -r -y -i --from-paths src
 colcon build --symlink-install
 source install/setup.bash
+```
+
+### 4. CRANE-X7 の USB ポート権限
+
+実機を接続したら、USB ポートへのアクセス権限を付与します（接続のたびに必要）。
+
+```bash
+sudo chmod 666 /dev/ttyUSB0
 ```
 
 ## 使い方
