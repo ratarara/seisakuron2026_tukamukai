@@ -36,7 +36,6 @@ Ubuntu 24.04 をインストールしただけの、何も設定していないP
 - **Ubuntu 24.04 LTS** がインストール済みであること
 - **GitHub アカウント**を持っていること
 - （任意）Claude Code を使う場合は、**Claude の有料プラン**（Pro 以上）のアカウントがあること
-- このリポジトリは Private なので、[@ratarara](https://github.com/ratarara) に GitHub のユーザー名を伝えて **Collaborator に招待**してもらい、届いたメールから招待を承認しておくこと
 
 端末の基本操作：
 
