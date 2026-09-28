@@ -35,7 +35,7 @@ Ubuntu 24.04 をインストールしただけの、何も設定していないP
 
 - **Ubuntu 24.04 LTS** がインストール済みであること
 - **GitHub アカウント**を持っていること
-- Claude Code を使うための **Claude アカウント**（Pro 以上のプラン）を持っていること
+- （任意）Claude Code を使う場合は、**Claude の有料プラン**（Pro 以上）のアカウントがあること
 - このリポジトリは Private なので、[@ratarara](https://github.com/ratarara) に GitHub のユーザー名を伝えて **Collaborator に招待**してもらい、届いたメールから招待を承認しておくこと
 
 端末の基本操作：
@@ -59,7 +59,9 @@ Windows とデュアルブートしている場合だけ、時計がずれない
 timedatectl set-local-rtc 1 --adjust-system-clock
 ```
 
-### 2. Claude Code のインストール
+### 2. Claude Code のインストール（任意）
+
+Claude Code は Claude の有料プラン（Pro 以上）が必要です。無料プランの人はこの手順を飛ばして 3 に進んでください。
 
 ROS 2 を入れる前に Claude Code を入れておくと、この先の手順でエラーが出たときに端末上で Claude に相談しながら進められます。
 
