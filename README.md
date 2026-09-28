@@ -29,25 +29,25 @@ CRANE-X7 と RealSense を使って、〇〇をするロボットを作ります
 
 ## セットアップ
 
-### 1. ROS 2 Jazzy のインストール
+授業で先生が示した手順に沿って、実際に行った環境構築の手順です。
 
-Ubuntu 24.04 に ROS 2 Jazzy をインストールします（[公式手順](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html)）。インストール済みの場合は飛ばしてください。
+### 1. 事前準備
 
 ```bash
-# ロケールをUTF-8に設定
-sudo apt update && sudo apt install -y locales
-sudo locale-gen en_US en_US.UTF-8
-sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
-export LANG=en_US.UTF-8
+# （Windowsとデュアルブートの場合）時計のずれを防ぐ
+timedatectl set-local-rtc 1 --adjust-system-clock
 
-# universe リポジトリの有効化
-sudo apt install -y software-properties-common
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y software-properties-common curl git
 sudo add-apt-repository universe
+```
 
+### 2. ROS 2 Jazzy のインストール
+
+```bash
 # ROS 2 の apt リポジトリを追加
-sudo apt update && sudo apt install -y curl
 export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F\" '{print $4}')
-curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb"
+curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
 sudo dpkg -i /tmp/ros2-apt-source.deb
 
 # ROS 2 Jazzy と開発ツールのインストール
@@ -56,53 +56,85 @@ sudo apt install -y ros-jazzy-desktop ros-dev-tools
 
 # 端末を開くたびに ROS 2 を読み込む
 echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
+# 通信を自分のPC内だけに限定する（教室で他の人のノードと混ざらないように）
+echo "export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST" >> ~/.bashrc
 source ~/.bashrc
-
-# rosdep の初期化（初回のみ）
-sudo rosdep init
-rosdep update
 ```
 
-動作確認（2つの端末で実行し、メッセージが届けばOK）：
+動作確認（2つの端末で実行し、talker の数字が listener に届けばOK）：
 
 ```bash
 ros2 run demo_nodes_cpp talker
 ros2 run demo_nodes_py listener
 ```
 
-### 2. RealSense パッケージのインストール
+### 3. ワークスペースの作成と自作パッケージでの動作確認
 
 ```bash
-sudo apt install -y ros-jazzy-realsense2-camera
-```
-
-### 3. ワークスペースの作成とビルド
-
-```bash
-# ワークスペースの作成
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
+ros2 pkg create mypkg --build-type ament_python
+```
 
-# 依存パッケージ
+`mypkg/mypkg/` に `talker.py`（`countup` トピックに `Int16` を0.5秒ごとに送る）と `listener.py`（受け取って表示する）を作成し、以下を編集します。
+
+- `package.xml`：`<exec_depend>rclpy</exec_depend>` と `<exec_depend>std_msgs</exec_depend>` を追加
+- `setup.py`：`entry_points` の `console_scripts` に `'talker = mypkg.talker:main'` と `'listener = mypkg.listener:main'` を追加
+
+```bash
+cd ~/ros2_ws
+colcon build
+echo "source ~/ros2_ws/install/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+
+# 2つの端末で実行
+ros2 run mypkg talker
+ros2 run mypkg listener
+```
+
+### 4. Git / GitHub の設定
+
+```bash
+git config --global user.name "GitHubのユーザー名"
+git config --global user.email "GitHubに登録したメールアドレス"
+git config --global init.defaultBranch main
+
+# SSH鍵を作成し、公開鍵（~/.ssh/id_ed25519.pub）を GitHub の Settings > SSH keys に登録
+ssh-keygen -t ed25519 -C "GitHubに登録したメールアドレス"
+ssh -T git@github.com
+
+# GitHub CLI
+sudo apt update
+sudo apt install -y gh git
+gh auth login
+```
+
+### 5. このリポジトリのクローン
+
+```bash
+cd ~/ros2_ws/src
+gh repo clone ratarara/seisakuron2026_tukamukai
+```
+
+CRANE-X7 を動かすための依存パッケージとビルド：
+
+```bash
+cd ~/ros2_ws/src
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_ros.git
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_description.git
 
-# このリポジトリ
-git clone https://github.com/ratarara/seisakuron2026_tukamukai.git
-
-# 依存関係のインストールとビルド
 cd ~/ros2_ws
 rosdep install -r -y -i --from-paths src
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-### 4. CRANE-X7 の USB ポート権限
-
-実機を接続したら、USB ポートへのアクセス権限を付与します（接続のたびに必要）。
+### 6. Claude Code のインストール（任意）
 
 ```bash
-sudo chmod 666 /dev/ttyUSB0
+curl -fsSL https://claude.ai/install.sh | bash
+cd ~/ros2_ws/src/seisakuron2026_tukamukai
+claude
 ```
 
 ## 使い方
