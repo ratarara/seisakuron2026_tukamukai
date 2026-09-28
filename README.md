@@ -41,20 +41,23 @@ gh repo clone ratarara/seisakuron2026_tukamukai
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_ros.git
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_description.git
 
+# RealSense の ROS 2 パッケージ
+sudo apt install -y ros-jazzy-realsense2-camera
+
 # 依存パッケージのインストールとビルド（時間がかかります）
 cd ~/ros2_ws
 rosdep install -r -y -i --from-paths src
 colcon build --symlink-install
-source ~/.bashrc
+source ~/ros2_ws/install/setup.bash
+```
+
+CRANE-X7 の USB ポートを使えるように、自分のユーザーを `dialout` グループに追加します（最初の1回だけ。実行後にログアウト→ログインし直すと有効になります）。
+
+```bash
+sudo usermod -aG dialout $USER
 ```
 
 ## 使い方
-
-CRANE-X7 を USB で接続したら、ポートへのアクセス権限を付与します（接続するたびに必要）。
-
-```bash
-sudo chmod 666 /dev/ttyUSB0
-```
 
 ```bash
 # 実機の起動
@@ -74,10 +77,13 @@ seisakuron2026_tukamukai/
 ├── LICENSE
 ├── package.xml
 ├── setup.py
+├── setup.cfg
+├── resource/
+│   └── tukamukai  # ament_python のパッケージ登録用（空ファイル）
 ├── launch/        # 起動用launchファイル
 ├── tukamukai/    # ノード本体（認識・動作計画など）
 ├── config/        # カメラ・パラメータ設定
-└── docs/          # 発表資料・議事録
+└── docs/          # 発表資料・議事録・ROS 2 環境構築手順
 ```
 
 ## 進捗管理
@@ -100,7 +106,9 @@ Milestone は3回の発表に対応しています。
 
 ## ライセンス・謝辞
 
-- 本リポジトリは [rt-net/crane_x7_ros](https://github.com/rt-net/crane_x7_ros)（Apache License 2.0）を利用しています。
+- 本リポジトリは以下を利用しています。
+  - [rt-net/crane_x7_ros](https://github.com/rt-net/crane_x7_ros)：Apache License 2.0
+  - [rt-net/crane_x7_description](https://github.com/rt-net/crane_x7_description)：RT社の独自ライセンス（[LICENSE](https://github.com/rt-net/crane_x7_description/blob/HEAD/LICENSE)）。研究開発目的での使用は許諾されていますが、商業目的での使用には RT社への問い合わせが必要です
 - 先輩のコードを参考・流用した場合は、ここに元リポジトリとライセンスを記載する。
 
 © 2026 つかむ会
