@@ -29,17 +29,33 @@ CRANE-X7 と RealSense を使って、〇〇をするロボットを作ります
 
 ## セットアップ
 
-授業で先生が示した手順に沿って、実際に行った環境構築の手順です。
+Ubuntu 24.04 をインストールしただけの、何も設定していないPCから始める手順です。上から順番に実行してください。
+
+### 0. 始める前に
+
+- **Ubuntu 24.04 LTS** がインストール済みであること
+- **GitHub アカウント**を持っていること
+- このリポジトリは Private なので、[@ratarara](https://github.com/ratarara) に GitHub のユーザー名を伝えて **Collaborator に招待**してもらい、届いたメールから招待を承認しておくこと
+
+端末の基本操作：
+
+- 端末を開く：`Ctrl + Alt + T`
+- 端末に貼り付け：`Ctrl + Shift + V`（`Ctrl + V` では貼り付けできません）
+- `sudo` のコマンドではパスワードを聞かれます。入力しても画面には何も表示されませんが、そのまま入力して Enter を押してください
+- 途中で `[Y/n]` と聞かれたら `Y` で Enter
 
 ### 1. 事前準備
 
 ```bash
-# （Windowsとデュアルブートの場合）時計のずれを防ぐ
-timedatectl set-local-rtc 1 --adjust-system-clock
-
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y software-properties-common curl git
-sudo add-apt-repository universe
+sudo add-apt-repository -y universe
+```
+
+Windows とデュアルブートしている場合だけ、時計がずれないように次も実行します。
+
+```bash
+timedatectl set-local-rtc 1 --adjust-system-clock
 ```
 
 ### 2. ROS 2 Jazzy のインストール
@@ -50,7 +66,7 @@ export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrast
 curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo $VERSION_CODENAME)_all.deb"
 sudo dpkg -i /tmp/ros2-apt-source.deb
 
-# ROS 2 Jazzy と開発ツールのインストール
+# ROS 2 Jazzy と開発ツールのインストール（時間がかかります）
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y ros-jazzy-desktop ros-dev-tools
 
@@ -59,85 +75,176 @@ echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
 # 通信を自分のPC内だけに限定する（教室で他の人のノードと混ざらないように）
 echo "export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST" >> ~/.bashrc
 source ~/.bashrc
+
+# 依存パッケージを自動で入れるツール（rosdep）の初期化
+sudo rosdep init
+rosdep update
 ```
 
-動作確認（2つの端末で実行し、talker の数字が listener に届けばOK）：
+動作確認：端末を2つ開き、それぞれで次を実行します。listener 側に `I heard: [Hello World: 1]` のような表示が出ればOKです（`Ctrl + C` で止めます）。
 
 ```bash
+# 端末1
 ros2 run demo_nodes_cpp talker
+```
+
+```bash
+# 端末2
 ros2 run demo_nodes_py listener
 ```
 
 ### 3. ワークスペースの作成と自作パッケージでの動作確認
 
+ワークスペース `~/ros2_ws` を作り、練習用パッケージ `mypkg` を作成します。
+
 ```bash
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-ros2 pkg create mypkg --build-type ament_python
+ros2 pkg create mypkg --build-type ament_python --dependencies rclpy std_msgs
+cd ~/ros2_ws/src/mypkg
+
+# talker と listener をコマンドとして登録
+sed -i "s/'console_scripts': \[/'console_scripts': [\n            'talker = mypkg.talker:main',\n            'listener = mypkg.listener:main',/" setup.py
 ```
 
-`mypkg/mypkg/` に `talker.py`（`countup` トピックに `Int16` を0.5秒ごとに送る）と `listener.py`（受け取って表示する）を作成し、以下を編集します。
+talker（`countup` トピックに数字を0.5秒ごとに送る）を作成：
 
-- `package.xml`：`<exec_depend>rclpy</exec_depend>` と `<exec_depend>std_msgs</exec_depend>` を追加
-- `setup.py`：`entry_points` の `console_scripts` に `'talker = mypkg.talker:main'` と `'listener = mypkg.listener:main'` を追加
+```bash
+cat > ~/ros2_ws/src/mypkg/mypkg/talker.py << 'EOF'
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Int16
+
+
+def main():
+    rclpy.init()
+    node = Node("talker")
+    pub = node.create_publisher(Int16, "countup", 10)
+    n = 0
+
+    def cb():
+        nonlocal n
+        msg = Int16()
+        msg.data = n
+        pub.publish(msg)
+        n += 1
+
+    node.create_timer(0.5, cb)
+    rclpy.spin(node)
+
+
+if __name__ == '__main__':
+    main()
+EOF
+```
+
+listener（受け取った数字を表示する）を作成：
+
+```bash
+cat > ~/ros2_ws/src/mypkg/mypkg/listener.py << 'EOF'
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Int16
+
+
+def main():
+    rclpy.init()
+    node = Node("listener")
+
+    def cb(msg):
+        node.get_logger().info("Listen: %d" % msg.data)
+
+    node.create_subscription(Int16, "countup", cb, 10)
+    rclpy.spin(node)
+
+
+if __name__ == '__main__':
+    main()
+EOF
+```
+
+ビルドして動作確認：
 
 ```bash
 cd ~/ros2_ws
 colcon build
 echo "source ~/ros2_ws/install/setup.bash" >> ~/.bashrc
 source ~/.bashrc
+```
 
-# 2つの端末で実行
+端末を2つ開き、listener 側に `Listen: 0`, `Listen: 1`, ... と表示されればOKです。
+
+```bash
+# 端末1
 ros2 run mypkg talker
+```
+
+```bash
+# 端末2
 ros2 run mypkg listener
 ```
 
 ### 4. Git / GitHub の設定
 
 ```bash
+# 自分の名前とメールアドレスに書き換えて実行
 git config --global user.name "GitHubのユーザー名"
 git config --global user.email "GitHubに登録したメールアドレス"
 git config --global init.defaultBranch main
 
-# SSH鍵を作成し、公開鍵（~/.ssh/id_ed25519.pub）を GitHub の Settings > SSH keys に登録
-ssh-keygen -t ed25519 -C "GitHubに登録したメールアドレス"
-ssh -T git@github.com
-
-# GitHub CLI
-sudo apt update
-sudo apt install -y gh git
+# GitHub CLI のインストールとログイン
+sudo apt install -y gh
 gh auth login
 ```
 
-### 5. このリポジトリのクローン
+`gh auth login` では次のように選びます（矢印キーで選択、Enter で決定）。
+
+1. `Where do you use GitHub?` → **GitHub.com**
+2. `What is your preferred protocol for Git operations?` → **SSH**
+3. `Generate a new SSH key to add to your GitHub account?` → **Y**（パスフレーズは空のまま Enter でOK）
+4. `Title for your SSH key` → そのまま Enter
+5. `How would you like to authenticate GitHub CLI?` → **Login with a web browser**
+6. 表示された8桁のコードをコピーし、Enter でブラウザを開いてコードを入力・承認
+
+接続確認（`Hi ユーザー名! You've successfully authenticated` と出ればOK。初回に `Are you sure you want to continue connecting` と聞かれたら `yes`）：
+
+```bash
+ssh -T git@github.com
+```
+
+### 5. このリポジトリと CRANE-X7 パッケージの取得・ビルド
 
 ```bash
 cd ~/ros2_ws/src
 gh repo clone ratarara/seisakuron2026_tukamukai
-```
 
-CRANE-X7 を動かすための依存パッケージとビルド：
-
-```bash
-cd ~/ros2_ws/src
+# CRANE-X7 の ROS 2 パッケージ（rt-net）
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_ros.git
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_description.git
 
+# 依存パッケージのインストールとビルド（時間がかかります）
 cd ~/ros2_ws
 rosdep install -r -y -i --from-paths src
 colcon build --symlink-install
-source install/setup.bash
+source ~/.bashrc
 ```
 
 ### 6. Claude Code のインストール（任意）
 
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash
+source ~/.bashrc
 cd ~/ros2_ws/src/seisakuron2026_tukamukai
 claude
 ```
 
 ## 使い方
+
+CRANE-X7 を USB で接続したら、ポートへのアクセス権限を付与します（接続するたびに必要）。
+
+```bash
+sudo chmod 666 /dev/ttyUSB0
+```
 
 ```bash
 # 実機の起動
