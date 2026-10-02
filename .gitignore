@@ -3,11 +3,8 @@ build/
 install/
 log/
 
-# Python
+# Python（launch ファイルを動かすとできるキャッシュ）
 __pycache__/
-*.pyc
-*.egg-info/
-.pytest_cache/
 
 # 大きいファイル（Drive に置いてリンクする）
 *.bag
