@@ -19,6 +19,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. **ソルバー**：手持ちのピースで枠を埋める配置を探索（完全被覆問題。小さい盤面はバックトラッキング、大きければ Dancing Links）
 4. **動作計画**：解いた配置に従い、ピースを順につかんで指定位置・向きに置く
 
+ソフトの設計（ノードの分け方、担当、データ形式の案）は `docs/software_design.md`。要点：
+
+- カメラ（RealSense D435）は **ハンドに付ける**（rt-net 公式マウンタ、`demo.launch.py use_d435:=true`）。カメラ→ロボットの座標変換は tf2 で自動。撮るたびにアームを撮影姿勢に動かして止めてから撮る
+- ノードは ①② 認識（B）、③ 司令塔（D、ソルバーを含む）、④ 動作（C）。認識はサービス、動作はアクションの案
+- お手本は crane_x7_examples の `color_detection` + `pick_and_place_tf`
+- Gazebo では D435 の画像は出ない（センサーのプラグインがない）
+
 ### ソルバーの制約
 
 - 盤面を市松に塗ると T ピースは必ず 3:1 になるため、**T の個数が偶数でないと 8×8 は埋まらない**
