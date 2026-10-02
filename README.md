@@ -76,18 +76,73 @@ ros2 launch tukamukai main.launch.py
 
 ```
 seisakuron2026_tukamukai/
-├── README.md
-├── LICENSE
-├── package.xml
-├── setup.py
-├── setup.cfg
+├── README.md            # このファイル
+├── CLAUDE.md            # Claude Code 向けのプロジェクトメモ
+├── .gitignore           # Git で管理しないファイルの一覧
+├── package.xml          # ROS 2 パッケージの情報と依存関係
+├── setup.py             # Python パッケージのビルド・インストール設定
+├── setup.cfg            # 実行ファイルのインストール先
 ├── resource/
-│   └── tukamukai  # ament_python のパッケージ登録用（空ファイル）
-├── launch/        # 起動用launchファイル
-├── tukamukai/    # ノード本体（認識・動作計画など）
-├── config/        # カメラ・パラメータ設定
-└── docs/          # 発表資料・議事録・ROS 2 環境構築手順
+│   └── tukamukai        # パッケージ登録用の空ファイル
+├── tukamukai/           # プログラム本体
+│   ├── __init__.py
+│   └── solver.py        # パズルのソルバー
+├── launch/
+│   └── main.launch.py   # 全体の起動ファイル
+├── config/              # 設定ファイル置き場（今は空）
+├── test/                # 自動テスト
+└── docs/
+    └── ros2_setup.md    # ROS 2 環境構築の手順
 ```
+
+### 各ファイルの説明
+
+**ドキュメント**
+
+| ファイル | 役割 | 詳細・いつ触るか |
+|---|---|---|
+| `README.md` | リポジトリの説明書 | 概要・セットアップ・使い方・ルールをまとめたもの。GitHub のトップに表示される。手順や構成が変わったら更新する |
+| `CLAUDE.md` | Claude Code 向けのメモ | やりたいこと、処理の流れ、ソルバーの制約、ハードの案、開発ルール、TODO。Claude Code が作業前に読む。方針が決まったら更新する |
+| `docs/ros2_setup.md` | ROS 2 環境構築手順 | 何も入っていない Ubuntu 24.04 に ROS 2 Jazzy の開発環境を作る手順。新しいメンバーや PC の再インストール時に使う |
+
+**ROS 2 パッケージの設定**（パッケージ名 `tukamukai`、ament_python）
+
+| ファイル | 役割 | 詳細・いつ触るか |
+|---|---|---|
+| `package.xml` | パッケージの情報 | 名前・説明・管理者・ライセンス・依存パッケージ（`rclpy`、`realsense2_camera` など）。`rosdep install` はここを見て必要なものを入れる。**新しいパッケージを使うときは依存を追加する** |
+| `setup.py` | ビルド・インストール設定 | `colcon build` がどのファイルをどこに入れるかを決める。**ノードを作ったら `entry_points` の `console_scripts` に登録する**（登録しないと `ros2 run` で起動できない）。`launch/` と `config/` もここでインストールしている |
+| `setup.cfg` | 実行ファイルの置き場所 | `ros2 run` が実行ファイルを見つけられるようにする設定。基本的に触らない |
+| `resource/tukamukai` | パッケージ登録用 | 中身は空。ROS 2 がこのパッケージを見つけるための目印。消さない・触らない |
+| `.gitignore` | Git の除外設定 | ビルドで生成される `build/` `install/` `log/`、Python のキャッシュ、動画や rosbag などの大きいファイルをコミットしないようにする |
+
+**プログラム**
+
+| ファイル | 役割 | 詳細・いつ触るか |
+|---|---|---|
+| `tukamukai/` | プログラム本体の置き場 | 認識・ソルバー・動作計画のコードをここに置く。ノードを追加したら `setup.py` にも登録する |
+| `tukamukai/__init__.py` | Python パッケージの目印 | 中身は空。このフォルダを Python のモジュールとして読み込めるようにする。消さない |
+| `tukamukai/solver.py` | パズルのソルバー | 手持ちのピースで盤面を埋める配置（種類・位置・回転角・重心）を探す。ROS に依存しないので `python3 -m tukamukai.solver` で単体で試せる |
+| `launch/main.launch.py` | 全体の起動ファイル | `ros2 launch tukamukai main.launch.py` で使う。認識・ソルバー・動作計画のノードができたらここに追加する（今は空） |
+| `config/` | 設定ファイル置き場 | カメラのパラメータや HSV のしきい値などを YAML で置く予定。`.gitkeep` は空のフォルダを Git に残すための空ファイル |
+
+**テスト**（`colcon test --packages-select tukamukai` で実行）
+
+| ファイル | 役割 | 詳細 |
+|---|---|---|
+| `test/test_solver.py` | ソルバーのテスト | 8×8 が埋まるか、解けない組み合わせを正しく判定するか、鏡像を使っていないかなどを確かめる |
+| `test/test_flake8.py` | コードの書き方チェック | 1行の長さ、インデント、使っていない import などを検査する |
+| `test/test_pep257.py` | docstring の書き方チェック | 関数の説明文（docstring）の形式を検査する |
+| `test/test_copyright.py` | 著作権表示のチェック | 各ファイル先頭の著作権表示を検査する。ライセンス未定のため今はスキップされる |
+
+### 今後追加する予定のもの
+
+| 場所 | 中身 |
+|---|---|
+| `LICENSE` | ライセンス（種類は未定） |
+| `docs/notes/` | 調査メモ |
+| `docs/minutes/YYYY-MM-DD.md` | 議事録と決定事項（判断の理由も） |
+| `docs/troubleshooting.md` | つまずいたことと解決方法 |
+| `hardware/` | ピース・ケースの CAD（STEP など）と STL、設計値 |
 
 ## 進捗管理
 
