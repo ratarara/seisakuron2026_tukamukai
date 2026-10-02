@@ -22,7 +22,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### ソルバーの制約
 
 - 盤面を市松に塗ると T ピースは必ず 3:1 になるため、**T の個数が偶数でないと 8×8 は埋まらない**
+- 行ごとの縞で塗ると J・L は向きに関係なく 3:1 になるため、**T を使わない場合は J+L の個数も偶数**でないと 8×8 は埋まらない
 - S/Z、L/J は鏡像。裏返し動作はしない前提なので、**回転だけで解ける**ピースの組み合わせに限定する（ソルバーは鏡映を候補に入れない）
+- 実装は `tukamukai/solver.py`（ROS 非依存）。候補が最も少ないマスから埋めるバックトラッキングで、上の条件を探索中にも枝刈りに使う。8×8 のランダムな組み合わせで最悪 2 秒程度。`python3 -m tukamukai.solver` でデモ、テストは `test/test_solver.py`
 
 ## 精度を上げるための機構（ハードウェア）
 
@@ -94,7 +96,7 @@ colcon test --packages-select tukamukai && colcon test-result --verbose
 ## 未決定・TODO
 
 - 1マスのサイズ（取っ手とグリッパの寸法から逆算）、全体が CRANE-X7 の作業範囲とカメラ画角に収まるか
-- ピースの種類ごとの個数（T は偶数）
+- ピースの種類ごとの個数（T は偶数。T なしなら J+L も偶数）
 - メンバーの担当、Backlog の URL、中間・最終発表の日程、LICENSE の種類（README に TODO として残っている）
 - 先輩のリポジトリをベースにする場合、元リポジトリ・ライセンス・差分を README に記載
 - `.gitignore` がまだない（`build/` `install/` `log/` を入れる）
