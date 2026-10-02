@@ -44,9 +44,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Intel RealSense（`ros-jazzy-realsense2-camera`。`package.xml` の依存に `realsense2_camera` を入れる）
 - アームは `crane_x7_examples`（MoveIt ベース）で別に起動し、本パッケージのノードから指令する
 
-## パッケージ構成（予定・未作成）
+## パッケージ構成
 
-`ament_python` パッケージ `tukamukai`。README の「ディレクトリ構成」に従い、新しい構成を発明しない。
+`ament_python` パッケージ `tukamukai`（骨組みのみ。ノードは未実装）。README の「ディレクトリ構成」に従い、新しい構成を発明しない。
 
 - `package.xml`, `setup.py`, `setup.cfg`, `resource/tukamukai`（空ファイル。ament_python に必須）
 - 新しいノードは `setup.py` の `console_scripts` に登録し、`launch/`・`config/` は `data_files` でインストールする
