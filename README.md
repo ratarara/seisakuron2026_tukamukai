@@ -34,7 +34,12 @@ CRANE-X7 と RealSense を使って、机の上にばらまいたテトリミノ
 
 ROS 2 Jazzy と GitHub の設定がまだの人は、先に [ROS 2 環境構築](docs/ros2_setup.md) を済ませてください。
 
-このリポジトリと CRANE-X7 パッケージの取得・ビルド：
+ここまでの手順は、ロボットやカメラをつながなくてもできます。実際に行ったときの記録は [docs/notes/setup-log-2026-10-02.md](docs/notes/setup-log-2026-10-02.md) にあります。
+
+> [!WARNING]
+> `sudo` を含むコマンドは **1行ずつ** 貼り付けてください。まとめて貼り付けると、パスワードを聞かれている間に次の行がパスワードとして読み込まれ、残りが実行されません。
+
+**1. このリポジトリと CRANE-X7 パッケージの取得**
 
 ```bash
 cd ~/ros2_ws/src
@@ -43,22 +48,56 @@ gh repo clone ratarara/seisakuron2026_tukamukai
 # CRANE-X7 の ROS 2 パッケージ（rt-net）
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_ros.git
 git clone -b $ROS_DISTRO https://github.com/rt-net/crane_x7_description.git
-
-# RealSense の ROS 2 パッケージ
-sudo apt install -y ros-jazzy-realsense2-camera
-
-# 依存パッケージのインストールとビルド（時間がかかります）
-cd ~/ros2_ws
-rosdep install -r -y -i --from-paths src
-colcon build --symlink-install
-source ~/ros2_ws/install/setup.bash
 ```
 
-CRANE-X7 の USB ポートを使えるように、自分のユーザーを `dialout` グループに追加します（最初の1回だけ。実行後にログアウト→ログインし直すと有効になります）。
+**2. 依存パッケージのインストール**（1行ずつ実行。`rosdep install` は時間がかかります）
+
+```bash
+# rosdep をまだ初期化していない人だけ（"already exists" と出たら初期化済み）
+sudo rosdep init
+rosdep update
+```
+
+```bash
+sudo apt install -y ros-jazzy-realsense2-camera
+```
+
+```bash
+cd ~/ros2_ws && rosdep install -r -y -i --from-paths src
+```
+
+最後に `#All required rosdeps installed successfully` と出れば OK です。
+
+**3. CRANE-X7 の USB ポートを使えるようにする**（最初の1回だけ。ログアウト→ログインし直すと有効になります）
 
 ```bash
 sudo usermod -aG dialout $USER
 ```
+
+**4. ビルド**
+
+```bash
+cd ~/ros2_ws
+colcon build --symlink-install
+source ~/ros2_ws/install/setup.bash
+```
+
+`Summary: 〇 packages finished` と出れば成功です。crane_x7_examples で `Policy CMP0144 is not set` という警告が出ますが、無視して大丈夫です。
+
+**5. 動作確認**（ロボットなしでできる範囲）
+
+```bash
+# CRANE-X7・RealSense・tukamukai のパッケージが表示されれば OK
+ros2 pkg list | grep -E "^crane_x7|^realsense2|^tukamukai"
+```
+
+ロボットがなくても、Gazebo のシミュレーションで CRANE-X7 を動かせます（初回はモデルのダウンロードに時間がかかります）。
+
+```bash
+ros2 launch crane_x7_gazebo crane_x7_with_table.launch.py
+```
+
+うまくいかないときは [docs/troubleshooting.md](docs/troubleshooting.md) を見てください。
 
 ## 使い方
 
