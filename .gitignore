@@ -1,0 +1,17 @@
+# colcon
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# 大きいファイル（Drive に置いてリンクする）
+*.bag
+*.mcap
+*.db3
+*.mp4
+*.mov
