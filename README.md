@@ -68,6 +68,9 @@ ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0
 
 # 別ターミナルで本パッケージを起動
 ros2 launch tukamukai main.launch.py
+
+# ソルバーだけ試す（ロボット・カメラ不要）
+ros2 run tukamukai solver_demo
 ```
 
 <!-- launchファイル名・引数は実装に合わせて書き換える -->
@@ -76,18 +79,72 @@ ros2 launch tukamukai main.launch.py
 
 ```
 seisakuron2026_tukamukai/
-├── README.md
-├── LICENSE
-├── package.xml
-├── setup.py
-├── setup.cfg
-├── resource/
-│   └── tukamukai  # ament_python のパッケージ登録用（空ファイル）
-├── launch/        # 起動用launchファイル
-├── tukamukai/    # ノード本体（認識・動作計画など）
-├── config/        # カメラ・パラメータ設定
-└── docs/          # 発表資料・議事録・ROS 2 環境構築手順
+├── README.md              # このファイル
+├── CLAUDE.md              # Claude Code 向けのプロジェクトメモ
+├── .gitignore             # Git で管理しないファイルの一覧
+├── package.xml            # ROS 2 パッケージの情報と依存関係
+├── CMakeLists.txt         # ビルドの設定
+├── include/
+│   └── tukamukai/
+│       └── solver.hpp     # ソルバーのヘッダ（使い方の説明つき）
+├── src/
+│   ├── solver.cpp         # ソルバーの実装
+│   └── solver_demo.cpp    # ソルバーのデモ
+├── launch/
+│   └── main.launch.py     # 全体の起動ファイル
+├── config/                # 設定ファイル置き場（今は空）
+├── test/
+│   └── test_solver.cpp    # ソルバーのテスト
+└── docs/
+    └── ros2_setup.md      # ROS 2 環境構築の手順
 ```
+
+### 各ファイルの説明
+
+**ドキュメント**
+
+| ファイル | 役割 | 詳細・いつ触るか |
+|---|---|---|
+| `README.md` | リポジトリの説明書 | 概要・セットアップ・使い方・ルールをまとめたもの。GitHub のトップに表示される。手順や構成が変わったら更新する |
+| `CLAUDE.md` | Claude Code 向けのメモ | やりたいこと、処理の流れ、ソルバーの制約、ハードの案、開発ルール、TODO。Claude Code が作業前に読む。方針が決まったら更新する |
+| `docs/ros2_setup.md` | ROS 2 環境構築手順 | 何も入っていない Ubuntu 24.04 に ROS 2 Jazzy の開発環境を作る手順。新しいメンバーや PC の再インストール時に使う |
+
+**ROS 2 パッケージの設定**（パッケージ名 `tukamukai`、C++ 用の ament_cmake）
+
+| ファイル | 役割 | 詳細・いつ触るか |
+|---|---|---|
+| `package.xml` | パッケージの情報 | 名前・説明・管理者・ライセンス・依存パッケージ（`rclcpp`、`realsense2_camera` など）。`rosdep install` はここを見て必要なものを入れる。**新しいパッケージを使うときは依存を追加する** |
+| `CMakeLists.txt` | ビルドの設定 | どのファイルをコンパイルして、何をインストールするかを書く。**ノードを作ったら `add_executable` と `install(TARGETS ...)` に追加する**（追加しないと `ros2 run` で起動できない）。使うパッケージは `find_package` と `ament_target_dependencies` にも書く |
+| `.gitignore` | Git の除外設定 | ビルドで生成される `build/` `install/` `log/`、動画や rosbag などの大きいファイルをコミットしないようにする |
+
+**プログラム**（C++17）
+
+| ファイル | 役割 | 詳細・いつ触るか |
+|---|---|---|
+| `include/tukamukai/` | ヘッダファイル置き場 | 関数やクラスの宣言を書く。ほかのファイルから `#include "tukamukai/〇〇.hpp"` で使う |
+| `include/tukamukai/solver.hpp` | ソルバーのヘッダ | `solve()`（盤面を埋める配置を探す）、`render()`（文字で表示）、`Placement`（種類・回転角・マス・重心）の宣言。座標と回転角の決まりもここに書いてある |
+| `src/` | ソースファイル置き場 | 処理の中身と、各ノードの `main` を書く |
+| `src/solver.cpp` | ソルバーの実装 | 手持ちのピースで盤面を埋める配置を探す。ROS に依存しないライブラリ `tukamukai_solver` としてビルドされ、ほかのノードからも使える |
+| `src/solver_demo.cpp` | ソルバーのデモ | `ros2 run tukamukai solver_demo` で 8×8 の例を解いて表示する。ソルバーの動作確認用 |
+| `launch/main.launch.py` | 全体の起動ファイル | `ros2 launch tukamukai main.launch.py` で使う。認識・ソルバー・動作計画のノードができたらここに追加する（今は空）。launch ファイルは C++ のパッケージでも Python で書くのが ROS 2 の標準 |
+| `config/` | 設定ファイル置き場 | カメラのパラメータや HSV のしきい値などを YAML で置く予定。`.gitkeep` は空のフォルダを Git に残すための空ファイル |
+
+**テスト**（`colcon test --packages-select tukamukai && colcon test-result --verbose` で実行）
+
+| ファイル | 役割 | 詳細 |
+|---|---|---|
+| `test/test_solver.cpp` | ソルバーのテスト（gtest） | 8×8 が埋まるか、解けない組み合わせを正しく判定するか、鏡像を使っていないかなどを確かめる |
+| （自動） | コードの書き方チェック | `package.xml` の `ament_lint_common` で、C++ の書式（uncrustify）、CMakeLists.txt、package.xml なども自動で検査される。C++ の書式は `ament_uncrustify --reformat <ファイル>` で自動で直せる |
+
+### 今後追加する予定のもの
+
+| 場所 | 中身 |
+|---|---|
+| `LICENSE` | ライセンス（種類は未定） |
+| `docs/notes/` | 調査メモ |
+| `docs/minutes/YYYY-MM-DD.md` | 議事録と決定事項（判断の理由も） |
+| `docs/troubleshooting.md` | つまずいたことと解決方法 |
+| `hardware/` | ピース・ケースの CAD（STEP など）と STL、設計値 |
 
 ## 進捗管理
 

@@ -22,7 +22,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### ソルバーの制約
 
 - 盤面を市松に塗ると T ピースは必ず 3:1 になるため、**T の個数が偶数でないと 8×8 は埋まらない**
+- 行ごとの縞で塗ると J・L は向きに関係なく 3:1 になるため、**T を使わない場合は J+L の個数も偶数**でないと 8×8 は埋まらない
 - S/Z、L/J は鏡像。裏返し動作はしない前提なので、**回転だけで解ける**ピースの組み合わせに限定する（ソルバーは鏡映を候補に入れない）
+- 実装は `include/tukamukai/solver.hpp` と `src/solver.cpp`（ROS 非依存のライブラリ `tukamukai_solver`）。盤面を 64 ビットのマスクで表し、候補が最も少ないマスから埋めるバックトラッキングで、上の条件を探索中にも枝刈りに使う。8×8 のランダムな組み合わせで最悪 0.03 秒程度。`ros2 run tukamukai solver_demo` でデモ、テストは `test/test_solver.cpp`（gtest）
 
 ## 精度を上げるための機構（ハードウェア）
 
@@ -46,11 +48,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## パッケージ構成
 
-`ament_python` パッケージ `tukamukai`（骨組みのみ。ノードは未実装）。README の「ディレクトリ構成」に従い、新しい構成を発明しない。
+`ament_cmake` パッケージ `tukamukai`。**言語は C++17（rclcpp）**。チームメンバーが慣れていて、MoveIt・crane_x7_examples も C++ のため（2026-10-02 に Python から変更）。README の「ディレクトリ構成」に従い、新しい構成を発明しない。
 
-- `package.xml`, `setup.py`, `setup.cfg`, `resource/tukamukai`（空ファイル。ament_python に必須）
-- 新しいノードは `setup.py` の `console_scripts` に登録し、`launch/`・`config/` は `data_files` でインストールする
-- `tukamukai/`：ノード本体（認識・ソルバー・動作計画）
+- `package.xml`, `CMakeLists.txt`
+- 新しいノードは `CMakeLists.txt` に `add_executable` を追加し、`install(TARGETS ... DESTINATION lib/${PROJECT_NAME})` に足す。ROS に依存しない処理はライブラリに分けて gtest でテストする
+- `include/tukamukai/`：ヘッダ、`src/`：実装と各ノードの main
+- `test/`：gtest。lint は ament_lint_common（uncrustify・lint_cmake・xmllint など）。コードの書式は `ament_uncrustify --reformat <ファイル>` で自動で直せる
+- `launch/` のファイルは C++ パッケージでも Python で書く（ROS 2 の標準）
 - `launch/`：エントリポイントは `main.launch.py`
 - `config/`：カメラ・パラメータ設定
 - `docs/`：発表資料・議事録・環境構築手順
@@ -68,7 +72,10 @@ source install/setup.bash
 ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0
 ros2 launch tukamukai main.launch.py
 
-# テスト（test/ ができたら）
+# ソルバーのデモ
+ros2 run tukamukai solver_demo
+
+# テスト（gtest と lint）
 colcon test --packages-select tukamukai && colcon test-result --verbose
 ```
 
@@ -94,8 +101,8 @@ colcon test --packages-select tukamukai && colcon test-result --verbose
 ## 未決定・TODO
 
 - 1マスのサイズ（取っ手とグリッパの寸法から逆算）、全体が CRANE-X7 の作業範囲とカメラ画角に収まるか
-- ピースの種類ごとの個数（T は偶数）
+- ピースの種類ごとの個数（T は偶数。T なしなら J+L も偶数）
 - メンバーの担当、Backlog の URL、中間・最終発表の日程、LICENSE の種類（README に TODO として残っている）
 - 先輩のリポジトリをベースにする場合、元リポジトリ・ライセンス・差分を README に記載
 - `.gitignore` がまだない（`build/` `install/` `log/` を入れる）
-- 余裕があれば：ソルバーの pytest と GitHub Actions、認識結果と解の画面表示（デモ用）
+- 余裕があれば：GitHub Actions でテストを自動実行、認識結果と解の画面表示（デモ用）
