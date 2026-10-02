@@ -64,3 +64,47 @@ gh auth status   # "Logged in to github.com account ..." と出れば OK
 **原因**：PCL ライブラリ側の CMake の書き方に対する警告。
 
 **解決方法**：対応不要。`Summary: ... packages finished` と出ていればビルドは成功している。
+
+## シミュレーション（Gazebo・RViz）
+
+### VSCode のターミナルから起動すると RViz が落ちる
+
+**症状**：`ros2 launch crane_x7_gazebo crane_x7_with_table.launch.py` で Gazebo は開くが、RViz が開かずに次のエラーで終了する。
+
+```
+[rviz2-5] /opt/ros/jazzy/lib/rviz2/rviz2: symbol lookup error: /snap/core20/current/lib/x86_64-linux-gnu/libpthread.so.0: undefined symbol: __libc_pthread_init, version GLIBC_PRIVATE
+[ERROR] [rviz2-5]: process has died [pid ..., exit code 127, ...]
+```
+
+**原因**：VSCode を snap 版（`sudo snap install code`）で入れていると、VSCode の中のターミナルに snap 用の環境変数（`GTK_PATH` など）が引き継がれる。そのため RViz が snap 側の古いライブラリを読み込んでしまう。
+
+**解決方法**：Gazebo・RViz などの画面を使うものは、VSCode の中ではなく **普通のターミナル（`Ctrl + Alt + T`）** から起動する。VSCode の中で起動したいときは、次のように snap の環境変数を外す。
+
+```bash
+unset GTK_PATH GTK_EXE_PREFIX GTK_IM_MODULE_FILE GDK_PIXBUF_MODULE_FILE GDK_PIXBUF_MODULEDIR GIO_MODULE_DIR GSETTINGS_SCHEMA_DIR LOCPATH
+ros2 launch crane_x7_gazebo crane_x7_with_table.launch.py
+```
+
+### ウィンドウを閉じても、裏でプログラムが動き続ける
+
+**症状**：Gazebo と RViz のウィンドウを閉じたあと、もう一度起動したりサンプルを動かしたりすると、`Publisher already registered for node name` などの警告が出る。動きもおかしくなる。
+
+**原因**：ウィンドウを閉じても、MoveIt（`move_group`）などの画面のないプログラムは終了しない。
+
+**解決方法**：シミュレーションは、起動したターミナルで **`Ctrl + C`** を押して止める。残っていないかは次で確認できる（何も表示されなければ OK）。
+
+```bash
+pgrep -a -x "move_group|rviz2|ruby|robot_state_publisher|parameter_bridge"
+```
+
+### サンプルを動かしてもアームが動かない（`No state update received`）
+
+**症状**：`ros2 launch crane_x7_examples example.launch.py example:=pick_and_place use_sim_time:=true` を実行すると `Plan and Execute request accepted` で止まり、シミュレーション側のターミナルに次の警告が出続ける。
+
+```
+[move_group-4] [WARN] ... No state update received within 100ms of system clock.
+```
+
+**原因**：Gazebo が終了している（ウィンドウを閉じた、落ちたなど）ため、関節の状態が MoveIt に届いていない。
+
+**解決方法**：シミュレーションを `Ctrl + C` で止めて起動し直す。シミュレーション側のターミナルに `You can start planning now!` と `Configured and activated crane_x7_arm_controller` が出てから、サンプルを実行する。サンプルにはシミュレーションの時計を使う `use_sim_time:=true` を必ず付ける。
