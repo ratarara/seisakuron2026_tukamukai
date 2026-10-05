@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ソフトの設計（ノードの分け方、担当、データ形式の案）は `docs/software_design.md`。要点：
 
 - カメラ（RealSense D435）は **ハンドに付ける**（rt-net 公式マウンタ、`demo.launch.py use_d435:=true`）。カメラ→ロボットの座標変換は tf2 で自動。撮るたびにアームを撮影姿勢に動かして止めてから撮る
-- ノードは ① ピース認識（B）、② ケース認識とマス目→ロボット座標の変換（A。ハード担当もソフトを持つ）、③ 司令塔（D、ソルバーを含む）、④ 動作（C）。認識はサービス、動作はアクションの案
+- ノードは ①② 認識（B）、③ 司令塔（D、ソルバーを含む）、④ 動作（C）。認識はサービス、動作はアクションの案
 - お手本は crane_x7_examples の `color_detection` + `pick_and_place_tf`
 - Gazebo では D435 の画像は出ない（センサーのプラグインがない）
 
