@@ -223,6 +223,8 @@ Milestone は3回の発表に対応しています。
 ## 開発ルール
 
 - `main` には直接pushせず、作業ごとにブランチを切って Pull Request でマージする
+  - GitHub のブラウザでファイルを編集・追加するときも同じです。「Commit changes」で **「Create a new branch for this commit and start a pull request」** を選んでください（「Commit directly to the main branch」は選ばない）
+  - このリポジトリは非公開・無料プランのため、main への直接の書き込みを GitHub の設定で禁止できません。各自で気をつけてください
 - ブランチ名は `feature/<内容>`（例：`feature/block-detection`）
 - 作業を始めるときは対応する Issue に自分を Assign する
 - 詰まったら Issue にコメントして早めに相談する
