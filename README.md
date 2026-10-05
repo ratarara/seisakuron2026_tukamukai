@@ -214,11 +214,11 @@ seisakuron2026_tukamukai/
 進捗は [Issues](../../issues) と [Projects](../../projects) で管理します。
 Milestone は3回の発表に対応しています。
 
-| Milestone | 内容 | 日程 |
-|-----------|------|------|
+| Milestone | 内容 | 日程 | リンク |
+|-----------|------|------| |
 | プラン発表 | 作るものの計画 | 2026年10月12日（月）第3週 |https://1drv.ms/p/c/defd3ac60481f035/IQDv-8OQs5LNSY_jyDj-PakUAZ9MSdc8Zf3vTxB-pTJmBM8?e=rSWqOR|
-| 中間発表 | デモ付き | |
-| 最終発表 | デモ付き | |
+| 中間発表 | デモ付き | | |
+| 最終発表 | デモ付き | | |
 
 ## 開発ルール
 
