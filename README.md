@@ -18,10 +18,12 @@ CRANE-X7 と RealSense を使って、机の上にばらまいたテトリミノ
 
 | 名前 | GitHub | 担当 |
 |------|--------|------|
-| 比屋根佳歩 | [@ratarara](https://github.com/ratarara) | |
-| 石川奈々美 | [@73lkj](https://github.com/73lkj) | |
-| 堀円香 | [@](https://github.com/) | |
-| キンジュンウ | [@](https://github.com/) | |
+| 比屋根佳歩 | [@ratarara](https://github.com/ratarara) | D：司令塔・統合（ソルバー、ノード間のデータ形式、全体をつなぐ） |
+| 石川奈々美 | [@73lkj](https://github.com/73lkj) | C：動作（MoveIt でつかんで置く、撮影姿勢への移動） |
+| 堀円香 | [@s25c1099](https://github.com/s25c1099) | B：認識（RealSense と OpenCV でピースとケースの位置を求める） |
+| キンジュンウ | [@s25c1032xl-cpu](https://github.com/s25c1032xl-cpu) | A：ハード（取っ手・ピース・ケースの設計と印刷、カメラのマウンタ） |
+
+担当ごとに作るものは [docs/software_design.md](docs/software_design.md) を見てください。
 
 ## 動作環境
 
