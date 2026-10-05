@@ -1,0 +1,10 @@
+# CAD・3D データは差分を表示しない（巨大な差分で PR が読みにくくなるため）
+*.stl binary
+*.STL binary
+*.3mf binary
+*.f3d binary
+*.f3z binary
+*.step -diff
+*.STEP -diff
+*.stp -diff
+*.STP -diff
