@@ -136,8 +136,15 @@ seisakuron2026_tukamukai/
 ├── config/                # 設定ファイル置き場（今は空）
 ├── test/
 │   └── test_solver.cpp    # ソルバーのテスト
-└── docs/
-    └── ros2_setup.md      # ROS 2 環境構築の手順
+├── docs/
+│   └── ros2_setup.md      # ROS 2 環境構築の手順
+└── hardware/              # ハードのデータ（CAD・STL・設計値）
+    ├── README.md          # 置き方とブラウザからの上げ方
+    ├── dimensions.md      # 設計値の一覧
+    ├── handle/            # 取っ手
+    ├── prototypes/        # 1マス分の試作
+    ├── pieces/            # ピース7種類
+    └── case/              # ケース
 ```
 
 ### 各ファイルの説明
@@ -156,6 +163,7 @@ seisakuron2026_tukamukai/
 |---|---|---|
 | `package.xml` | パッケージの情報 | 名前・説明・管理者・ライセンス・依存パッケージ（`rclcpp`、`realsense2_camera` など）。`rosdep install` はここを見て必要なものを入れる。**新しいパッケージを使うときは依存を追加する** |
 | `CMakeLists.txt` | ビルドの設定 | どのファイルをコンパイルして、何をインストールするかを書く。**ノードを作ったら `add_executable` と `install(TARGETS ...)` に追加する**（追加しないと `ros2 run` で起動できない）。使うパッケージは `find_package` と `ament_target_dependencies` にも書く |
+| `.gitattributes` | Git でのファイルの扱い | STL や STEP などの CAD データを、PR で差分表示しないようにする |
 | `.gitignore` | Git の除外設定 | ビルドで生成される `build/` `install/` `log/`、動画や rosbag などの大きいファイルをコミットしないようにする |
 
 **プログラム**（C++17）
@@ -169,6 +177,14 @@ seisakuron2026_tukamukai/
 | `src/solver_demo.cpp` | ソルバーのデモ | `ros2 run tukamukai solver_demo` で 8×8 の例を解いて表示する。ソルバーの動作確認用 |
 | `launch/main.launch.py` | 全体の起動ファイル | `ros2 launch tukamukai main.launch.py` で使う。認識・ソルバー・動作計画のノードができたらここに追加する（今は空）。launch ファイルは C++ のパッケージでも Python で書くのが ROS 2 の標準 |
 | `config/` | 設定ファイル置き場 | カメラのパラメータや HSV のしきい値などを YAML で置く予定。`.gitkeep` は空のフォルダを Git に残すための空ファイル |
+
+**ハード**
+
+| ファイル | 役割 | 詳細・いつ触るか |
+|---|---|---|
+| `hardware/README.md` | ハードのデータの置き方 | フォルダの分け方、ファイル名の付け方、ブラウザから上げる手順 |
+| `hardware/dimensions.md` | 設計値の一覧 | マスの大きさ・取っ手の寸法・色など。**ソフトの担当はここの値を使う**ので、値を変えたら知らせる |
+| `hardware/handle/` など | 部品ごとのデータ | CAD の元データ、STEP、STL を部品ごとに置く |
 
 **テスト**（`colcon test --packages-select tukamukai && colcon test-result --verbose` で実行）
 
@@ -185,7 +201,6 @@ seisakuron2026_tukamukai/
 | `docs/notes/` | 調査メモ |
 | `docs/minutes/YYYY-MM-DD.md` | 議事録と決定事項（判断の理由も） |
 | `docs/troubleshooting.md` | つまずいたことと解決方法 |
-| `hardware/` | ピース・ケースの CAD（STEP など）と STL、設計値 |
 
 ## 進捗管理
 
