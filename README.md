@@ -25,6 +25,9 @@ CRANE-X7 と RealSense を使って、机の上にばらまいたテトリミノ
 
 担当ごとに作るものは [docs/software_design.md](docs/software_design.md) を見てください。
 
+第3週発表スライド
+https://1drv.ms/p/c/defd3ac60481f035/IQDv-8OQs5LNSY_jyDj-PakUAZ9MSdc8Zf3vTxB-pTJmBM8?e=rSWqOR
+
 ## 動作環境
 
 - Ubuntu 24.04 LTS
