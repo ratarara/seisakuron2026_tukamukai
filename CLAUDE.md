@@ -24,6 +24,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - カメラ（RealSense D435）は **ハンドに付ける**（rt-net 公式マウンタ、`demo.launch.py use_d435:=true`）。カメラ→ロボットの座標変換は tf2 で自動。撮るたびにアームを撮影姿勢に動かして止めてから撮る
 - ノードは ①② 認識（B）、③ 司令塔（D、ソルバーを含む）、④ 動作（C）。認識はサービス、動作はアクションの案
+- A（ハード）はソフトの動作確認（テスト）も担当する（TA・先生の助言）。記録は `docs/tests/`
 - お手本は crane_x7_examples の `color_detection` + `pick_and_place_tf`
 - Gazebo では D435 の画像は出ない（センサーのプラグインがない）
 
