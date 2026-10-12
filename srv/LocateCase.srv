@@ -1,0 +1,10 @@
+# ③ 司令塔 → ② ケース認識：「ケースの位置を求めて」
+# アームが撮影姿勢で止まっている状態で呼ぶ
+---
+bool success
+string message
+
+# ケースの座標系（frame_id は base_link）。原点はマス (0, 0) の外側の角、
+# x 軸は行が増える向き、y 軸は列が増える向き、z 軸は上向き（docs/interfaces.md）
+# 同じものを tf のフレーム "tukamukai_case" としても出す
+geometry_msgs/PoseStamped case_pose

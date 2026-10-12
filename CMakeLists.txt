@@ -12,6 +12,21 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+# ノード間でやりとりするデータの型（docs/interfaces.md）
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/Piece.msg"
+  "srv/DetectPieces.srv"
+  "srv/LocateCase.srv"
+  "action/MoveToObservation.action"
+  "action/PickPlace.action"
+  DEPENDENCIES geometry_msgs action_msgs
+)
+# 同じパッケージのノードからこれらの型を使うときは、次をリンクする
+#   target_link_libraries(<ノード> ${cpp_typesupport_target})
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_typesupport_cpp)
 
 # ソルバー（ROS に依存しないライブラリ）
 add_library(tukamukai_solver src/solver.cpp)
@@ -45,4 +60,5 @@ if(BUILD_TESTING)
   target_link_libraries(test_solver tukamukai_solver)
 endif()
 
+ament_export_dependencies(rosidl_default_runtime)
 ament_package()

@@ -1,0 +1,8 @@
+# ③ 司令塔 → ④ 動作：「撮影姿勢へ」
+
+# 撮影姿勢の名前（config/ の YAML で定義）。空なら既定の撮影姿勢
+string pose_name
+---
+bool success
+string message
+---

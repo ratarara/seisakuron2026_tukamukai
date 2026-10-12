@@ -138,6 +138,7 @@ seisakuron2026_tukamukai/
 ├── src/
 │   ├── solver.cpp         # ソルバーの実装
 │   └── solver_demo.cpp    # ソルバーのデモ
+├── msg/ srv/ action/       # ノード間でやりとりするデータの型
 ├── launch/
 │   └── main.launch.py     # 全体の起動ファイル
 ├── config/                # 設定ファイル置き場（今は空）
@@ -182,6 +183,7 @@ seisakuron2026_tukamukai/
 | `src/` | ソースファイル置き場 | 処理の中身と、各ノードの `main` を書く |
 | `src/solver.cpp` | ソルバーの実装 | 手持ちのピースで盤面を埋める配置を探す。ROS に依存しないライブラリ `tukamukai_solver` としてビルドされ、ほかのノードからも使える |
 | `src/solver_demo.cpp` | ソルバーのデモ | `ros2 run tukamukai solver_demo` で 8×8 の例を解いて表示する。ソルバーの動作確認用 |
+| `msg/` `srv/` `action/` | ノード間のデータの型 | 認識・司令塔・動作がやりとりするメッセージ・サービス・アクションの定義。使い方と座標の決まりは [docs/interfaces.md](docs/interfaces.md) |
 | `launch/main.launch.py` | 全体の起動ファイル | `ros2 launch tukamukai main.launch.py` で使う。認識・ソルバー・動作計画のノードができたらここに追加する（今は空）。launch ファイルは C++ のパッケージでも Python で書くのが ROS 2 の標準 |
 | `config/` | 設定ファイル置き場 | カメラのパラメータや HSV のしきい値などを YAML で置く予定。`.gitkeep` は空のフォルダを Git に残すための空ファイル |
 
