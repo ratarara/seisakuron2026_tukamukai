@@ -21,7 +21,7 @@ CRANE-X7 と RealSense を使って、机の上にばらまいたテトリミノ
 | 比屋根佳歩 | [@ratarara](https://github.com/ratarara) | D：司令塔・統合（ソルバー、ノード間のデータ形式、全体をつなぐ） |
 | 石川奈々美 | [@73lkj](https://github.com/73lkj) | C：動作（MoveIt でつかんで置く、撮影姿勢への移動） |
 | 堀円香 | [@s25c1099](https://github.com/s25c1099) | B：認識（RealSense と OpenCV でピースとケースの位置を求める） |
-| キンジュンウ | [@s25c1032xl-cpu](https://github.com/s25c1032xl-cpu) | A：ハード（取っ手・ピース・ケースの設計と印刷、カメラのマウンタ） |
+| キンジュンウ | [@s25c1032xl-cpu](https://github.com/s25c1032xl-cpu) | A：ハード＋ソフトウェアの動作確認（取っ手・ピース・ケースの設計と印刷、カメラのマウンタ、各プログラムのテストと記録） |
 
 担当ごとに作るものは [docs/software_design.md](docs/software_design.md) を見てください。
 
@@ -227,6 +227,8 @@ Milestone は3回の発表に対応しています。
 ## 開発ルール
 
 - `main` には直接pushせず、作業ごとにブランチを切って Pull Request でマージする
+  - GitHub のブラウザでファイルを編集・追加するときも同じです。「Commit changes」で **「Create a new branch for this commit and start a pull request」** を選んでください（「Commit directly to the main branch」は選ばない）
+  - このリポジトリは非公開・無料プランのため、main への直接の書き込みを GitHub の設定で禁止できません。各自で気をつけてください
 - ブランチ名は `feature/<内容>`（例：`feature/block-detection`）
 - 作業を始めるときは対応する Issue に自分を Assign する
 - 詰まったら Issue にコメントして早めに相談する
