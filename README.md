@@ -104,11 +104,15 @@ ros2 launch crane_x7_gazebo crane_x7_with_table.launch.py
 
 使い方（RViz での操作、サンプルの動かし方）は [docs/simulation.md](docs/simulation.md) にあります。
 
+実機（CRANE-X7 本体）をつないで動かす手順は [docs/real_robot.md](docs/real_robot.md) にあります。
+
 ソフトの全体の設計と、担当ごとに作るものは [docs/software_design.md](docs/software_design.md) にあります。
 
 うまくいかないときは [docs/troubleshooting.md](docs/troubleshooting.md) を見てください。
 
 ## 使い方
+
+実機をつなぐときは、先に USB の設定が必要です（→ [docs/real_robot.md](docs/real_robot.md)）。
 
 ```bash
 # 実機の起動

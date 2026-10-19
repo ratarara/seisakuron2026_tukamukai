@@ -87,7 +87,7 @@ RealSense を使うサンプル（`aruco_detection`・`color_detection`・`point
 
 ## 実機で動かすとき
 
-シミュレーションの代わりに実機を起動します。サンプルは `use_sim_time:=true` を **外して** 実行します。
+シミュレーションの代わりに実機を起動します。サンプルは `use_sim_time:=true` を **外して** 実行します。USB の設定（毎回必要）や終了のしかたを含めた手順は [real_robot.md](real_robot.md) にあります。
 
 ```bash
 # ターミナル1
