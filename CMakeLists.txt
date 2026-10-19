@@ -12,7 +12,10 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-
+find_package(angles REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(moveit_ros_planning_interface REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 # ソルバー（ROS に依存しないライブラリ）
 add_library(tukamukai_solver src/solver.cpp)
 target_include_directories(tukamukai_solver PUBLIC
@@ -23,10 +26,19 @@ target_include_directories(tukamukai_solver PUBLIC
 add_executable(solver_demo src/solver_demo.cpp)
 target_link_libraries(solver_demo tukamukai_solver)
 
+add_executable(pick_place_node src/pick_place_node.cpp)
+ament_target_dependencies(pick_place_node
+  angles
+  geometry_msgs
+  moveit_ros_planning_interface
+  rclcpp
+  tf2_geometry_msgs
+)
+
 install(TARGETS tukamukai_solver
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
-install(TARGETS solver_demo
+install(TARGETS solver_demo pick_place_node
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/
   DESTINATION include)
