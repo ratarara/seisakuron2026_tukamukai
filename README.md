@@ -123,6 +123,9 @@ ros2 launch tukamukai main.launch.py
 
 # ソルバーだけ試す（ロボット・カメラ不要）
 ros2 run tukamukai solver_demo
+
+# ソルバーの解を RViz で立体のアニメーションにする（ロボット・カメラ不要。docs/simulation.md）
+ros2 launch tukamukai solver_viz.launch.py
 ```
 
 <!-- launchファイル名・引数は実装に合わせて書き換える -->
@@ -138,15 +141,21 @@ seisakuron2026_tukamukai/
 ├── CMakeLists.txt         # ビルドの設定
 ├── include/
 │   └── tukamukai/
-│       └── solver.hpp     # ソルバーのヘッダ（使い方の説明つき）
+│       ├── solver.hpp     # ソルバーのヘッダ（使い方の説明つき）
+│       └── board_geometry.hpp  # マス → ケース座標 → ロボット座標の変換
 ├── src/
 │   ├── solver.cpp         # ソルバーの実装
-│   └── solver_demo.cpp    # ソルバーのデモ
+│   ├── solver_demo.cpp    # ソルバーのデモ
+│   ├── board_geometry.cpp # 座標の変換の実装
+│   └── solver_viz.cpp     # ソルバーの解を RViz に表示するノード
 ├── launch/
-│   └── main.launch.py     # 全体の起動ファイル
-├── config/                # 設定ファイル置き場（今は空）
+│   ├── main.launch.py     # 全体の起動ファイル
+│   └── solver_viz.launch.py  # ソルバーの解の表示
+├── config/
+│   └── solver_viz.rviz    # ソルバーの解を表示する RViz の設定
 ├── test/
-│   └── test_solver.cpp    # ソルバーのテスト
+│   ├── test_solver.cpp    # ソルバーのテスト
+│   └── test_board_geometry.cpp  # 座標の変換のテスト
 ├── docs/
 │   └── ros2_setup.md      # ROS 2 環境構築の手順
 └── hardware/              # ハードのデータ（CAD・STL・設計値）
@@ -185,6 +194,8 @@ seisakuron2026_tukamukai/
 | `include/tukamukai/solver.hpp` | ソルバーのヘッダ | `solve()`（盤面を埋める配置を探す）、`render()`（文字で表示）、`Placement`（種類・回転角・マス・重心）の宣言。座標と回転角の決まりもここに書いてある |
 | `src/` | ソースファイル置き場 | 処理の中身と、各ノードの `main` を書く |
 | `src/solver.cpp` | ソルバーの実装 | 手持ちのピースで盤面を埋める配置を探す。ROS に依存しないライブラリ `tukamukai_solver` としてビルドされ、ほかのノードからも使える |
+| `include/tukamukai/board_geometry.hpp`・`src/board_geometry.cpp` | 座標の変換（#31） | ソルバーの配置（マスと回転角）を、ケース座標とロボット座標（`base_link`）の位置・向きに直す。ROS に依存しないライブラリ `tukamukai_geometry`。座標の決まりは docs/interfaces.md と同じ |
+| `src/solver_viz.cpp` | ソルバーの解の表示 | 解を RViz に立体で出し、ピースを順に運ぶアニメーションにする。`ros2 launch tukamukai solver_viz.launch.py` で起動。使い方は docs/simulation.md |
 | `src/solver_demo.cpp` | ソルバーのデモ | `ros2 run tukamukai solver_demo` で 8×8 の例を解いて表示する。ソルバーの動作確認用 |
 | `launch/main.launch.py` | 全体の起動ファイル | `ros2 launch tukamukai main.launch.py` で使う。認識・ソルバー・動作計画のノードができたらここに追加する（今は空）。launch ファイルは C++ のパッケージでも Python で書くのが ROS 2 の標準 |
 | `config/` | 設定ファイル置き場 | カメラのパラメータや HSV のしきい値などを YAML で置く予定。`.gitkeep` は空のフォルダを Git に残すための空ファイル |
@@ -201,6 +212,7 @@ seisakuron2026_tukamukai/
 
 | ファイル | 役割 | 詳細 |
 |---|---|---|
+| `test/test_board_geometry.cpp` | 座標の変換のテスト（gtest） | マスの中心の位置、回転角と yaw の符号、全種類・全部の向きでソルバーと同じマスに置かれるかを確かめる |
 | `test/test_solver.cpp` | ソルバーのテスト（gtest） | 8×8 が埋まるか、解けない組み合わせを正しく判定するか、鏡像を使っていないかなどを確かめる |
 | （自動） | コードの書き方チェック | `package.xml` の `ament_lint_common` で、C++ の書式（uncrustify）、CMakeLists.txt、package.xml なども自動で検査される。C++ の書式は `ament_uncrustify --reformat <ファイル>` で自動で直せる |
 
