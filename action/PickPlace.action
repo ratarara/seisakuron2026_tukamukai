@@ -1,0 +1,22 @@
+# ③ 司令塔 → ④ 動作：「このピースをつかんで、ここに置け」
+# 座標は base_link、単位は m と rad。向きの決め方は Piece.msg と同じ
+
+# ピースの種類（記録・表示用）
+string kind
+
+# つかむ位置：取っ手の位置と、ピースの向き（① の認識結果そのまま）
+geometry_msgs/Point pick_position
+float64 pick_yaw
+
+# 置く位置：置いたときの取っ手の位置と、ピースの向き（③ がソルバーの答えから計算する）
+geometry_msgs/Point place_position
+float64 place_yaw
+---
+bool success
+
+# 失敗した段階："" / "approach" / "grasp" / "lift" / "transfer" / "place" / "release" / "retreat"
+string failed_stage
+string message
+---
+# 今の段階（failed_stage と同じ名前）
+string stage
