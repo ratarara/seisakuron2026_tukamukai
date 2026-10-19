@@ -130,8 +130,12 @@ public:
     frame_.yaw = declare_parameter("case_yaw", 0.0);
     frame_.cell_size = declare_parameter("cell_size", tukamukai::kDefaultCellSize);
     piece_height_ = declare_parameter("piece_height", 0.010);
-    tray_x_ = declare_parameter("tray_x", 0.12);
-    tray_y_ = declare_parameter("tray_y", 0.13);
+    // 置き場（ピースが待っている場所）。指定しなければケースの左隣（y が大きい側）に置く
+    tray_x_ = declare_parameter("tray_x", frame_.x);
+    tray_y_ = declare_parameter(
+      "tray_y", frame_.y + cols_ * frame_.cell_size + 0.06);
+    tray_columns_ = declare_parameter("tray_columns", 4);
+    tray_spacing_ = declare_parameter("tray_spacing", 0.09);
     lift_height_ = declare_parameter("lift_height", 0.06);
     step_time_ = declare_parameter("step_time", 2.0);
     loop_ = declare_parameter("loop", true);
@@ -178,12 +182,13 @@ private:
     RCLCPP_INFO(get_logger(), "\n%s", out.str().c_str());
   }
 
-  // i 番目のピースが置き場で待っている位置。置き場は 0.07m 間隔の格子（横に4個ずつ）
+  // i 番目のピースが置き場で待っている位置。置き場は tray_spacing 間隔の格子（x 方向に tray_columns 個ずつ）
   Pose3D tray_pose(size_t i) const
   {
+    const auto columns = static_cast<size_t>(std::max(1, tray_columns_));
     return {
-      tray_x_ + static_cast<double>(i % 4) * 0.07,
-      tray_y_ + static_cast<double>(i / 4) * 0.07,
+      tray_x_ + static_cast<double>(i % columns) * tray_spacing_,
+      tray_y_ + static_cast<double>(i / columns) * tray_spacing_,
       frame_.z,
       frame_.yaw};
   }
@@ -370,6 +375,8 @@ private:
   double piece_height_;
   double tray_x_;
   double tray_y_;
+  int tray_columns_;
+  double tray_spacing_;
   double lift_height_;
   double step_time_;
   bool loop_;

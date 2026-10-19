@@ -90,7 +90,11 @@ RealSense を使うサンプル（`aruco_detection`・`color_detection`・`point
 ソルバーの解を RViz に立体で表示します。ロボットも Gazebo も不要です。机の上の置き場に並べたピースが、解の順に1個ずつ「持ち上がる → 運ばれながら回る → ケースに下りる」アニメーションになります。
 
 ```bash
+# 中間発表の 4×4（I・S・L・L）
 ros2 launch tukamukai solver_viz.launch.py
+
+# 最終の 8×8（決まった16ピース：I・O・S・Z・J・L が2個ずつ、T が4個）
+ros2 launch tukamukai solver_viz.launch.py preset:=8x8
 ```
 
 - ピースの色はテトリスの標準色、ピースの上の `1:I` は「置く順番:種類」です
@@ -104,20 +108,21 @@ ros2 launch tukamukai solver_viz.launch.py
 
 | 引数 | 初期値 | 内容 |
 |---|---|---|
-| `pieces` | `I:1,S:1,L:2` | 使うピース（種類:個数） |
-| `rows` `cols` | `4` `4` | 盤面の大きさ |
-| `step_time` | `2.0` | 1ピースを運ぶ時間 [秒] |
+| `preset` | `4x4` | 盤面・ピース・ケースの位置・カメラの組み合わせ（`4x4` か `8x8`）。中身は `launch/solver_viz.launch.py` の `PRESETS` |
+| `pieces` | プリセットの値 | 使うピース（種類:個数）。例 `pieces:="I:1,O:3"` |
+| `rows` `cols` | プリセットの値 | 盤面の大きさ |
+| `step_time` | 4×4 は `2.0`、8×8 は `1.2` | 1ピースを運ぶ時間 [秒] |
 | `with_robot` | `true` | CRANE-X7 のモデルを home 姿勢で出す。Gazebo・実機と一緒に使うときは `false` |
 
 ```bash
-# 最終の 8×8 を見る
-ros2 launch tukamukai solver_viz.launch.py rows:=8 cols:=8 pieces:="I:2,O:2,T:4,S:2,Z:2,J:2,L:2"
+# 8×8 をゆっくり見る
+ros2 launch tukamukai solver_viz.launch.py preset:=8x8 step_time:=3.0
 
 # Gazebo のシミュレーションに重ねる（Gazebo を起動してから、別のターミナルで）
 ros2 launch tukamukai solver_viz.launch.py with_robot:=false
 ```
 
-ケースの位置は、ノードのパラメータ `case_x` `case_y` `case_yaw`（`base_link` から見たケースの角の位置と向き）で変えられます。今は仮の値（ロボットの正面 16〜24cm）です。置く順番（#30）はまだ決めていないので、ソルバーが見つけた順に置きます。
+ケースの位置は、ノードのパラメータ `case_x` `case_y` `case_yaw`（`base_link` から見たケースの角の位置と向き）で変えられます。今は仮の値（4×4 はロボットの正面 16〜24cm、8×8 は 15〜31cm）です。置き場は、ケースの左隣（y が大きい側）に自動で並びます。置く順番（#30）はまだ決めていないので、ソルバーが見つけた順に置きます。
 
 ## 実機で動かすとき
 

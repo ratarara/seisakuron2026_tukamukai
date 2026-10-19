@@ -125,7 +125,8 @@ ros2 launch tukamukai main.launch.py
 ros2 run tukamukai solver_demo
 
 # ソルバーの解を RViz で立体のアニメーションにする（ロボット・カメラ不要。docs/simulation.md）
-ros2 launch tukamukai solver_viz.launch.py
+ros2 launch tukamukai solver_viz.launch.py              # 4×4
+ros2 launch tukamukai solver_viz.launch.py preset:=8x8  # 8×8
 ```
 
 <!-- launchファイル名・引数は実装に合わせて書き換える -->
@@ -152,7 +153,8 @@ seisakuron2026_tukamukai/
 │   ├── main.launch.py     # 全体の起動ファイル
 │   └── solver_viz.launch.py  # ソルバーの解の表示
 ├── config/
-│   └── solver_viz.rviz    # ソルバーの解を表示する RViz の設定
+│   ├── solver_viz.rviz    # ソルバーの解を表示する RViz の設定（4×4）
+│   └── solver_viz_8x8.rviz  # 同じ（8×8。カメラを引いたもの）
 ├── test/
 │   ├── test_solver.cpp    # ソルバーのテスト
 │   └── test_board_geometry.cpp  # 座標の変換のテスト
