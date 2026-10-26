@@ -50,6 +50,7 @@ ament_target_dependencies(pick_place_node
   rclcpp
   tf2_geometry_msgs
 )
+target_link_libraries(pick_place_node tukamukai_geometry)
 
 install(TARGETS tukamukai_solver tukamukai_geometry
   ARCHIVE DESTINATION lib

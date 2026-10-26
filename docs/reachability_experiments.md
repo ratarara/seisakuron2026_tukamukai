@@ -3,6 +3,11 @@
 CRANE-X7 が 8×8 ケースのどこまで届くかを、Mock（実機なし）で調べた記録です。
 ケースの置き方と 1 マスの大きさを決める根拠として使います。
 
+> **注意**：この記録は、1 マスを 20 mm に決める前（30 mm・25 mm で検討していたとき）のものです。
+> 1 マスは 2026-10-05 に **20 mm** に決まり（#31、`hardware/dimensions.md`）、
+> `pick_place_node` の初期値も `cell_size` = 0.02、`origin_y` = -0.07 に変えました。
+> 20 mm なら 8×8 のケースは 160 mm 角で、下の配置 A・B より小さく収まります。
+
 - 記録日: 2026-10-03
 - ブランチ: `feature/pick-place-node`
 - 使ったコード: `src/pick_place_node.cpp`、`launch/pick_place.launch.py`

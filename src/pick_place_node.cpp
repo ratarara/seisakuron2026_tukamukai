@@ -36,6 +36,7 @@
 #include "moveit/move_group_interface/move_group_interface.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "tukamukai/board_geometry.hpp"
 
 using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
 
@@ -694,8 +695,10 @@ int main(int argc, char ** argv)
   const bool step_by_step = node->get_parameter_or<bool>("step_by_step", false);
   const CaseConfig case_cfg{
     node->get_parameter_or<double>("origin_x", 0.19),
-    node->get_parameter_or<double>("origin_y", -0.105),
-    node->get_parameter_or<double>("cell_size", 0.03)};
+    // 1マスは 20mm（#31、hardware/dimensions.md）。8×8 のケースが左右の真ん中に来るよう、
+    // マス(行0, 列0)の中心は y = -3.5 マス
+    node->get_parameter_or<double>("origin_y", -3.5 * tukamukai::kDefaultCellSize),
+    node->get_parameter_or<double>("cell_size", tukamukai::kDefaultCellSize)};
   const YawConfig yaw_cfg{
     node->get_parameter_or<double>("yaw_at_rot0", -90.0),
     node->get_parameter_or<double>("yaw_sign", -1.0)};
