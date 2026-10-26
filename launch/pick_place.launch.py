@@ -68,6 +68,7 @@ NODE_ARGS = {
     'tip_y': ('0.0', float, 'fingertip_zero mode: fingertip y [m]'),
     'tip_z': ('0.0', float, 'fingertip_zero mode: fingertip height [m] (0 = robot base bottom)'),
     'finger_length': ('0.084', float, 'from gripper_base_link to the fingertip [m]'),
+    'tip_speed': ('0.005', float, 'fingertip_zero mode: going-down speed [m/s] (5 mm/s)'),
 }
 
 

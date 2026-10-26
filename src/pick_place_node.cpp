@@ -1014,6 +1014,8 @@ int main(int argc, char ** argv)
   const double tip_z = node->get_parameter_or<double>("tip_z", 0.0);
   // 手首の付け根から指先まで [m]（ロボットのモデル：指の付け根 0.024 ＋ 指の長さ 0.060）
   const double finger_length = node->get_parameter_or<double>("finger_length", 0.084);
+  // 指先を下ろす速さ [m/s]。机との間を見ながら止められるよう、ゆっくりにする
+  const double tip_speed = node->get_parameter_or<double>("tip_speed", 0.005);
   const double down_elbow_min_deg = node->get_parameter_or<double>("down_elbow_min_deg", -135.0);
   const double down_elbow_max_deg = node->get_parameter_or<double>("down_elbow_max_deg", -45.0);
 
@@ -1111,7 +1113,7 @@ int main(int argc, char ** argv)
     keep_gripper = true;
   } else if (mode == "fingertip_zero") {
     ok = run_fingertip_zero(
-      controller, logger, tip_x, tip_y, tip_z, finger_length, lift_speed, comp, planar_tol_deg);
+      controller, logger, tip_x, tip_y, tip_z, finger_length, tip_speed, comp, planar_tol_deg);
     keep_pose = true;     // 定規で測れるよう、その位置のままにする
     keep_gripper = true;
   } else if (mode == "pick_move") {
