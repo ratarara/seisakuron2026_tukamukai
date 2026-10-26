@@ -108,6 +108,8 @@ ros2 launch crane_x7_gazebo crane_x7_with_table.launch.py
 
 ソフトの全体の設計と、担当ごとに作るものは [docs/software_design.md](docs/software_design.md) にあります。
 
+RealSense を使えるときに rosbag で記録しておき、カメラなしで認識を作る手順は [docs/recognition_without_camera.md](docs/recognition_without_camera.md) にあります。
+
 うまくいかないときは [docs/troubleshooting.md](docs/troubleshooting.md) を見てください。
 
 ## 使い方
@@ -178,6 +180,7 @@ seisakuron2026_tukamukai/
 | `README.md` | リポジトリの説明書 | 概要・セットアップ・使い方・ルールをまとめたもの。GitHub のトップに表示される。手順や構成が変わったら更新する |
 | `CLAUDE.md` | Claude Code 向けのメモ | やりたいこと、処理の流れ、ソルバーの制約、ハードの案、開発ルール、TODO。Claude Code が作業前に読む。方針が決まったら更新する |
 | `docs/ros2_setup.md` | ROS 2 環境構築手順 | 何も入っていない Ubuntu 24.04 に ROS 2 Jazzy の開発環境を作る手順。新しいメンバーや PC の再インストール時に使う |
+| `docs/recognition_without_camera.md` | カメラなしで認識を作る手順 | RealSense で rosbag を記録し、その記録と写真で HSV のしきい値・輪郭・ロボットの座標への変換を作る。カメラを使える時間が限られているときに使う |
 
 **ROS 2 パッケージの設定**（パッケージ名 `tukamukai`、C++ 用の ament_cmake）
 

@@ -66,7 +66,7 @@ ros2 launch crane_x7_examples camera_example.launch.py example:='color_detection
 | 使うソフト | **realsense2_camera**（画像と深度を ROS に流す）、**OpenCV**（HSV で色の切り出し、輪郭、ArUco）、**tf2**（カメラ座標→ロボット座標）、**rqt_image_view / RViz**（結果の確認） |
 | 入力 | カラー画像、深度画像（カラーに位置を合わせたもの） |
 | 出力 | ピースごとに「種類（I/O/T/S/Z/J/L）、位置 x・y・z、回転角」、ケースの位置と向き。すべてロボット座標 |
-| ロボットなしで試す | カメラを机の上に手で構えて試す。カメラもないときは、撮った写真で OpenCV の部分だけ先に作る |
+| ロボットなしで試す | カメラを机の上に手で構えて試す。カメラもないときは、撮った写真で OpenCV の部分だけ先に作る（→ [recognition_without_camera.md](recognition_without_camera.md)） |
 | 完成の目安 | 机にばらまいたピースが全部、正しい種類・位置・向きで出る |
 | 参考 | crane_x7_examples の `color_detection`（HSV での切り出し、深度からの位置、tf での出力）、`aruco_detection`（マーカーの位置と向きを tf で出す） |
 
