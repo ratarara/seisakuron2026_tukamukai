@@ -728,6 +728,47 @@ bool run_lift_place(
   return true;
 }
 
+// テスト8：指先を、ロボットの高さ 0（base_link、土台の底の高さ）の tip_z [m] に合わせて止める。
+// 机の面がロボットの高さ 0 からどれだけ低いかを、指先から机までを定規で測って調べるため。
+// 指を閉じ（0°）、(x, y) の真上から手を真下に向けてまっすぐ下ろす。腕の重さで下がる分は、
+// 高さも含めて補正する（comp.use_z を true にする）。指先は手首の付け根（gripper_base_link）
+// から finger_length [m] 下にあるとして計算する
+bool run_fingertip_zero(
+  PickAndPlace & robot, const rclcpp::Logger & logger, const double x, const double y,
+  const double tip_z, const double finger_length, const double speed, CompConfig comp,
+  const double planar_tol_deg)
+{
+  comp.enabled = true;
+  comp.use_z = true;
+  // 高さ（10〜17 mm）と前後（約 10 mm）のずれが合わさるので、補正の上限を広げる。
+  // 机は高さ 0 より約 3 cm 低いので、25 mm 動き直しても机には届かない
+  comp.max_total = std::max(comp.max_total, 0.025);
+  comp.max_iter = std::max(comp.max_iter, 3);
+  HandPose hand{x, y, tip_z + finger_length, -180.0, 0.0, -90.0};
+  HandPose above = hand;
+  above.z += 0.05;
+  Offset offset;
+  RCLCPP_INFO(
+    logger, "[fingertip_zero] fingertip -> (%.3f, %.3f, %.3f) [m], hand (gripper_base_link) z=%.3f",
+    x, y, tip_z, hand.z);
+  const auto step = [&logger](const bool ok, const char * what) {
+      RCLCPP_INFO(logger, "[fingertip_zero] %s : %s", what, ok ? "OK" : "FAILED");
+      return ok;
+    };
+  const bool ok =
+    step(robot.move_gripper_angle(PickAndPlace::GRIPPER_CLOSE), "close the fingers") &&
+    step(robot.move_arm_planar(to_pose(above), planar_tol_deg, logger, "move above"),
+    "move above") &&
+    step(robot.move_hand_compensated(to_pose(hand), speed, comp, offset, logger, "go down"),
+    "go down");
+  if (ok) {
+    RCLCPP_INFO(
+      logger, "[fingertip_zero] The fingertip is now at height %.3f m. Measure from the "
+      "fingertip to the table with a ruler.", tip_z);
+  }
+  return ok;
+}
+
 // テスト7：home から、つかむ位置の上へ移動し、真下へ下ろしてつかむ → まっすぐ持ち上げる →
 // 高さと手の向きを保ったまま、(dx, dy) [m] だけ水平にまっすぐ動く → まっすぐ下ろす →
 // 離す → まっすぐ持ち上げる。手は常に真下を向け、グリッパ（指）は水平にする。
@@ -968,6 +1009,11 @@ int main(int argc, char ** argv)
   comp.use_z = node->get_parameter_or<bool>("comp_use_z", false);
   comp.fake_error_y = node->get_parameter_or<double>("comp_fake_error_mm", 0.0) / 1000.0;
   const double planar_tol_deg = node->get_parameter_or<double>("planar_tol_deg", 5.0);
+  const double tip_x = node->get_parameter_or<double>("tip_x", 0.25);
+  const double tip_y = node->get_parameter_or<double>("tip_y", 0.0);
+  const double tip_z = node->get_parameter_or<double>("tip_z", 0.0);
+  // 手首の付け根から指先まで [m]（ロボットのモデル：指の付け根 0.024 ＋ 指の長さ 0.060）
+  const double finger_length = node->get_parameter_or<double>("finger_length", 0.084);
   const double down_elbow_min_deg = node->get_parameter_or<double>("down_elbow_min_deg", -135.0);
   const double down_elbow_max_deg = node->get_parameter_or<double>("down_elbow_max_deg", -45.0);
 
@@ -1017,7 +1063,9 @@ int main(int argc, char ** argv)
     return 1;
   }
   // 手を真下に向けるモードでは、肘を折りたたみすぎて根本にぶつからないよう制限する
-  if (is_hand_down || mode == "lower" || keep_start || mode == "pick_move") {
+  if (is_hand_down || mode == "lower" || keep_start || mode == "pick_move" ||
+    mode == "fingertip_zero")
+  {
     controller.set_elbow_limit(down_elbow_min_deg, down_elbow_max_deg);
   }
   controller.set_constraints();
@@ -1061,6 +1109,11 @@ int main(int argc, char ** argv)
     ok = run_lower_test(controller, logger, start, lower_min_z, lower_speed);
     keep_pose = true;     // 止めた高さのままにする
     keep_gripper = true;
+  } else if (mode == "fingertip_zero") {
+    ok = run_fingertip_zero(
+      controller, logger, tip_x, tip_y, tip_z, finger_length, lift_speed, comp, planar_tol_deg);
+    keep_pose = true;     // 定規で測れるよう、その位置のままにする
+    keep_gripper = true;
   } else if (mode == "pick_move") {
     ok = run_pick_move(
       controller, logger, PICK, pick_grasp_deg, gripper_open_deg, lift_dz, lift_speed,
@@ -1091,7 +1144,8 @@ int main(int argc, char ** argv)
   } else {
     RCLCPP_ERROR(
       logger, "Unknown mode: %s (home / single / corners / rotations / gripper / gripper_sweep / "
-      "gripper_cycle / hand_down / lower / lift_place / pick_move)", mode.c_str());
+      "gripper_cycle / hand_down / lower / lift_place / pick_move / fingertip_zero)",
+      mode.c_str());
     ok = false;
   }
 

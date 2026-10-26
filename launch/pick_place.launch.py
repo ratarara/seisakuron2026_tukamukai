@@ -17,7 +17,7 @@ NODE_ARGS = {
     'mode': (
         'single', str,
         'home | single | corners | rotations | gripper | gripper_sweep | gripper_cycle | '
-        'hand_down | lower | lift_place | pick_move',
+        'hand_down | lower | lift_place | pick_move | fingertip_zero',
     ),
     'speed_scale': ('1.0', float, 'speed scale 0.0-1.0 (use 0.1-0.3 on the real robot)'),
     'step_by_step': ('false', bool, 'true: confirm each motion with Enter (opens xterm)'),
@@ -64,6 +64,10 @@ NODE_ARGS = {
     'comp_use_z': ('false', bool, 'pick_move mode: also correct the height'),
     'comp_fake_error_mm': ('0.0', float, 'test on Mock only: pretend a y error [mm]'),
     'planar_tol_deg': ('5.0', float, 'pick_move mode: max arm twist [deg] above the piece'),
+    'tip_x': ('0.25', float, 'fingertip_zero mode: fingertip x [m]'),
+    'tip_y': ('0.0', float, 'fingertip_zero mode: fingertip y [m]'),
+    'tip_z': ('0.0', float, 'fingertip_zero mode: fingertip height [m] (0 = robot base bottom)'),
+    'finger_length': ('0.084', float, 'from gripper_base_link to the fingertip [m]'),
 }
 
 
