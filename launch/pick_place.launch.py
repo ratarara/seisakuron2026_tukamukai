@@ -57,6 +57,12 @@ NODE_ARGS = {
     'place_dx': ('0.0', float, 'pick_move mode: move forward by [m] before placing'),
     'place_dy': ('0.15', float, 'pick_move mode: move left by [m] before placing'),
     'pick_grasp_deg': ('-2.0', float, 'pick_move mode: gripper angle [deg] to grasp'),
+    'comp_enabled': ('true', bool, 'pick_move mode: correct the position error (false = off)'),
+    'comp_tol_mm': ('1.0', float, 'pick_move mode: do not correct errors smaller than this [mm]'),
+    'comp_max_iter': ('2', int, 'pick_move mode: max number of correction moves'),
+    'comp_max_mm': ('10.0', float, 'pick_move mode: max total correction [mm] (safety)'),
+    'comp_use_z': ('false', bool, 'pick_move mode: also correct the height'),
+    'comp_fake_error_mm': ('0.0', float, 'test on Mock only: pretend a y error [mm]'),
 }
 
 
