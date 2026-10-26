@@ -18,10 +18,15 @@ CRANE-X7 と RealSense を使って、机の上にばらまいたテトリミノ
 
 | 名前 | GitHub | 担当 |
 |------|--------|------|
-| 比屋根佳歩 | [@ratarara](https://github.com/ratarara) | |
-| 石川奈々美 | [@73lkj](https://github.com/73lkj) | |
-| 堀円香 | [@](https://github.com/) | |
-| キンジュンウ | [@](https://github.com/) | |
+| 比屋根佳歩 | [@ratarara](https://github.com/ratarara) | D：司令塔・統合（ソルバー、ノード間のデータ形式、全体をつなぐ） |
+| 石川奈々美 | [@73lkj](https://github.com/73lkj) | C：動作（MoveIt でつかんで置く、撮影姿勢への移動） |
+| 堀円香 | [@s25c1099](https://github.com/s25c1099) | B：認識（RealSense と OpenCV でピースとケースの位置を求める） |
+| キンジュンウ | [@s25c1032xl-cpu](https://github.com/s25c1032xl-cpu) | A：ハード＋ソフトウェアの動作確認（取っ手・ピース・ケースの設計と印刷、カメラのマウンタ、各プログラムのテストと記録） |
+
+担当ごとに作るものは [docs/software_design.md](docs/software_design.md) を見てください。
+
+第3週発表スライド
+https://1drv.ms/p/c/defd3ac60481f035/IQDv-8OQs5LNSY_jyDj-PakUAZ9MSdc8Zf3vTxB-pTJmBM8?e=rSWqOR
 
 ## 動作環境
 
@@ -99,9 +104,15 @@ ros2 launch crane_x7_gazebo crane_x7_with_table.launch.py
 
 使い方（RViz での操作、サンプルの動かし方）は [docs/simulation.md](docs/simulation.md) にあります。
 
+実機（CRANE-X7 本体）をつないで動かす手順は [docs/real_robot.md](docs/real_robot.md) にあります。
+
+ソフトの全体の設計と、担当ごとに作るものは [docs/software_design.md](docs/software_design.md) にあります。
+
 うまくいかないときは [docs/troubleshooting.md](docs/troubleshooting.md) を見てください。
 
 ## 使い方
+
+実機をつなぐときは、先に USB の設定が必要です（→ [docs/real_robot.md](docs/real_robot.md)）。
 
 ```bash
 # 実機の起動
@@ -112,6 +123,10 @@ ros2 launch tukamukai main.launch.py
 
 # ソルバーだけ試す（ロボット・カメラ不要）
 ros2 run tukamukai solver_demo
+
+# ソルバーの解を RViz で立体のアニメーションにする（ロボット・カメラ不要。docs/simulation.md）
+ros2 launch tukamukai solver_viz.launch.py              # 4×4
+ros2 launch tukamukai solver_viz.launch.py preset:=8x8  # 8×8
 ```
 
 <!-- launchファイル名・引数は実装に合わせて書き換える -->
@@ -127,17 +142,31 @@ seisakuron2026_tukamukai/
 ├── CMakeLists.txt         # ビルドの設定
 ├── include/
 │   └── tukamukai/
-│       └── solver.hpp     # ソルバーのヘッダ（使い方の説明つき）
+│       ├── solver.hpp     # ソルバーのヘッダ（使い方の説明つき）
+│       └── board_geometry.hpp  # マス → ケース座標 → ロボット座標の変換
 ├── src/
 │   ├── solver.cpp         # ソルバーの実装
-│   └── solver_demo.cpp    # ソルバーのデモ
+│   ├── solver_demo.cpp    # ソルバーのデモ
+│   ├── board_geometry.cpp # 座標の変換の実装
+│   └── solver_viz.cpp     # ソルバーの解を RViz に表示するノード
 ├── launch/
-│   └── main.launch.py     # 全体の起動ファイル
-├── config/                # 設定ファイル置き場（今は空）
+│   ├── main.launch.py     # 全体の起動ファイル
+│   └── solver_viz.launch.py  # ソルバーの解の表示
+├── config/
+│   ├── solver_viz.rviz    # ソルバーの解を表示する RViz の設定（4×4）
+│   └── solver_viz_8x8.rviz  # 同じ（8×8。カメラを引いたもの）
 ├── test/
-│   └── test_solver.cpp    # ソルバーのテスト
-└── docs/
-    └── ros2_setup.md      # ROS 2 環境構築の手順
+│   ├── test_solver.cpp    # ソルバーのテスト
+│   └── test_board_geometry.cpp  # 座標の変換のテスト
+├── docs/
+│   └── ros2_setup.md      # ROS 2 環境構築の手順
+└── hardware/              # ハードのデータ（CAD・STL・設計値）
+    ├── README.md          # 置き方とブラウザからの上げ方
+    ├── dimensions.md      # 設計値の一覧
+    ├── handle/            # 取っ手
+    ├── prototypes/        # 1マス分の試作
+    ├── pieces/            # ピース7種類
+    └── case/              # ケース
 ```
 
 ### 各ファイルの説明
@@ -156,6 +185,7 @@ seisakuron2026_tukamukai/
 |---|---|---|
 | `package.xml` | パッケージの情報 | 名前・説明・管理者・ライセンス・依存パッケージ（`rclcpp`、`realsense2_camera` など）。`rosdep install` はここを見て必要なものを入れる。**新しいパッケージを使うときは依存を追加する** |
 | `CMakeLists.txt` | ビルドの設定 | どのファイルをコンパイルして、何をインストールするかを書く。**ノードを作ったら `add_executable` と `install(TARGETS ...)` に追加する**（追加しないと `ros2 run` で起動できない）。使うパッケージは `find_package` と `ament_target_dependencies` にも書く |
+| `.gitattributes` | Git でのファイルの扱い | STL や STEP などの CAD データを、PR で差分表示しないようにする |
 | `.gitignore` | Git の除外設定 | ビルドで生成される `build/` `install/` `log/`、動画や rosbag などの大きいファイルをコミットしないようにする |
 
 **プログラム**（C++17）
@@ -166,14 +196,25 @@ seisakuron2026_tukamukai/
 | `include/tukamukai/solver.hpp` | ソルバーのヘッダ | `solve()`（盤面を埋める配置を探す）、`render()`（文字で表示）、`Placement`（種類・回転角・マス・重心）の宣言。座標と回転角の決まりもここに書いてある |
 | `src/` | ソースファイル置き場 | 処理の中身と、各ノードの `main` を書く |
 | `src/solver.cpp` | ソルバーの実装 | 手持ちのピースで盤面を埋める配置を探す。ROS に依存しないライブラリ `tukamukai_solver` としてビルドされ、ほかのノードからも使える |
+| `include/tukamukai/board_geometry.hpp`・`src/board_geometry.cpp` | 座標の変換（#31） | ソルバーの配置（マスと回転角）を、ケース座標とロボット座標（`base_link`）の位置・向きに直す。ROS に依存しないライブラリ `tukamukai_geometry`。座標の決まりは docs/interfaces.md と同じ |
+| `src/solver_viz.cpp` | ソルバーの解の表示 | 解を RViz に立体で出し、ピースを順に運ぶアニメーションにする。`ros2 launch tukamukai solver_viz.launch.py` で起動。使い方は docs/simulation.md |
 | `src/solver_demo.cpp` | ソルバーのデモ | `ros2 run tukamukai solver_demo` で 8×8 の例を解いて表示する。ソルバーの動作確認用 |
 | `launch/main.launch.py` | 全体の起動ファイル | `ros2 launch tukamukai main.launch.py` で使う。認識・ソルバー・動作計画のノードができたらここに追加する（今は空）。launch ファイルは C++ のパッケージでも Python で書くのが ROS 2 の標準 |
 | `config/` | 設定ファイル置き場 | カメラのパラメータや HSV のしきい値などを YAML で置く予定。`.gitkeep` は空のフォルダを Git に残すための空ファイル |
+
+**ハード**
+
+| ファイル | 役割 | 詳細・いつ触るか |
+|---|---|---|
+| `hardware/README.md` | ハードのデータの置き方 | フォルダの分け方、ファイル名の付け方、ブラウザから上げる手順 |
+| `hardware/dimensions.md` | 設計値の一覧 | マスの大きさ・取っ手の寸法・色など。**ソフトの担当はここの値を使う**ので、値を変えたら知らせる |
+| `hardware/handle/` など | 部品ごとのデータ | CAD の元データ、STEP、STL を部品ごとに置く |
 
 **テスト**（`colcon test --packages-select tukamukai && colcon test-result --verbose` で実行）
 
 | ファイル | 役割 | 詳細 |
 |---|---|---|
+| `test/test_board_geometry.cpp` | 座標の変換のテスト（gtest） | マスの中心の位置、回転角と yaw の符号、全種類・全部の向きでソルバーと同じマスに置かれるかを確かめる |
 | `test/test_solver.cpp` | ソルバーのテスト（gtest） | 8×8 が埋まるか、解けない組み合わせを正しく判定するか、鏡像を使っていないかなどを確かめる |
 | （自動） | コードの書き方チェック | `package.xml` の `ament_lint_common` で、C++ の書式（uncrustify）、CMakeLists.txt、package.xml なども自動で検査される。C++ の書式は `ament_uncrustify --reformat <ファイル>` で自動で直せる |
 
@@ -185,22 +226,23 @@ seisakuron2026_tukamukai/
 | `docs/notes/` | 調査メモ |
 | `docs/minutes/YYYY-MM-DD.md` | 議事録と決定事項（判断の理由も） |
 | `docs/troubleshooting.md` | つまずいたことと解決方法 |
-| `hardware/` | ピース・ケースの CAD（STEP など）と STL、設計値 |
 
 ## 進捗管理
 
 進捗は [Issues](../../issues) と [Projects](../../projects) で管理します。
 Milestone は3回の発表に対応しています。
 
-| Milestone | 内容 | 日程 |
-|-----------|------|------|
-| プラン発表 | 作るものの計画 | 2026年10月12日（月）第3週 |
-| 中間発表 | デモ付き | |
-| 最終発表 | デモ付き | |
+| Milestone | 内容 | 日程 | リンク |
+|-----------|------|------|--------|
+| プラン発表 | 作るものの計画 | 2026年10月12日（月）第3週 | [発表資料](https://1drv.ms/p/c/defd3ac60481f035/IQDv-8OQs5LNSY_jyDj-PakUAZ9MSdc8Zf3vTxB-pTJmBM8?e=rSWqOR) |
+| 中間発表 | デモ付き | 未定 | |
+| 最終発表 | デモ付き | 未定 | |
 
 ## 開発ルール
 
 - `main` には直接pushせず、作業ごとにブランチを切って Pull Request でマージする
+  - GitHub のブラウザでファイルを編集・追加するときも同じです。「Commit changes」で **「Create a new branch for this commit and start a pull request」** を選んでください（「Commit directly to the main branch」は選ばない）
+  - このリポジトリは非公開・無料プランのため、main への直接の書き込みを GitHub の設定で禁止できません。各自で気をつけてください
 - ブランチ名は `feature/<内容>`（例：`feature/block-detection`）
 - 作業を始めるときは対応する Issue に自分を Assign する
 - 詰まったら Issue にコメントして早めに相談する

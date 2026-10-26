@@ -85,9 +85,48 @@ ros2 launch crane_x7_examples example.launch.py example:=pick_and_place use_sim_
 
 RealSense を使うサンプル（`aruco_detection`・`color_detection`・`point_cloud_detection`）もあります。認識（#20, #21）の参考になりますが、カメラをつけた実機が必要です（`camera_example.launch.py`、詳しくは crane_x7_examples の README）。
 
+## ソルバーの解を見る（solver_viz）
+
+ソルバーの解を RViz に立体で表示します。ロボットも Gazebo も不要です。机の上の置き場に並べたピースが、解の順に1個ずつ「持ち上がる → 運ばれながら回る → ケースに下りる」アニメーションになります。
+
+```bash
+# 中間発表の 4×4（I・S・L・L）
+ros2 launch tukamukai solver_viz.launch.py
+
+# 最終の 8×8（決まった16ピース：I・O・S・Z・J・L が2個ずつ、T が4個）
+ros2 launch tukamukai solver_viz.launch.py preset:=8x8
+```
+
+- ピースの色はテトリスの標準色、ピースの上の `1:I` は「置く順番:種類」です
+- 今運んでいるピースの **白い矢印** は、ハンドの指が閉じる向き（ピースの x 軸。docs/interfaces.md）です
+- ケースの角の **赤い矢印** はケース座標の x 軸（行が増える向き）、**緑の矢印** は y 軸（列が増える向き）です
+- ターミナルには、解の盤面と、各ピースを置く位置（`base_link` の x, y）と向き（yaw）が表示されます
+
+位置と向きは `board_geometry`（#31 の変換）で計算しています。ピースがケースのマスからずれて表示されたら、変換が間違っています。
+
+よく使う引数：
+
+| 引数 | 初期値 | 内容 |
+|---|---|---|
+| `preset` | `4x4` | 盤面・ピース・ケースの位置・カメラの組み合わせ（`4x4` か `8x8`）。中身は `launch/solver_viz.launch.py` の `PRESETS` |
+| `pieces` | プリセットの値 | 使うピース（種類:個数）。例 `pieces:="I:1,O:3"` |
+| `rows` `cols` | プリセットの値 | 盤面の大きさ |
+| `step_time` | 4×4 は `2.0`、8×8 は `1.2` | 1ピースを運ぶ時間 [秒] |
+| `with_robot` | `true` | CRANE-X7 のモデルを home 姿勢で出す。Gazebo・実機と一緒に使うときは `false` |
+
+```bash
+# 8×8 をゆっくり見る
+ros2 launch tukamukai solver_viz.launch.py preset:=8x8 step_time:=3.0
+
+# Gazebo のシミュレーションに重ねる（Gazebo を起動してから、別のターミナルで）
+ros2 launch tukamukai solver_viz.launch.py with_robot:=false
+```
+
+ケースの位置は、ノードのパラメータ `case_x` `case_y` `case_yaw`（`base_link` から見たケースの角の位置と向き）で変えられます。今は仮の値（4×4 はロボットの正面 16〜24cm、8×8 は 15〜31cm）です。置き場は、ケースの左隣（y が大きい側）に自動で並びます。置く順番（#30）はまだ決めていないので、ソルバーが見つけた順に置きます。
+
 ## 実機で動かすとき
 
-シミュレーションの代わりに実機を起動します。サンプルは `use_sim_time:=true` を **外して** 実行します。
+シミュレーションの代わりに実機を起動します。サンプルは `use_sim_time:=true` を **外して** 実行します。USB の設定（毎回必要）や終了のしかたを含めた手順は [real_robot.md](real_robot.md) にあります。
 
 ```bash
 # ターミナル1

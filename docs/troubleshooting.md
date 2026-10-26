@@ -108,3 +108,50 @@ pgrep -a -x "move_group|rviz2|ruby|robot_state_publisher|parameter_bridge"
 **原因**：Gazebo が終了している（ウィンドウを閉じた、落ちたなど）ため、関節の状態が MoveIt に届いていない。
 
 **解決方法**：シミュレーションを `Ctrl + C` で止めて起動し直す。シミュレーション側のターミナルに `You can start planning now!` と `Configured and activated crane_x7_arm_controller` が出てから、サンプルを実行する。サンプルにはシミュレーションの時計を使う `use_sim_time:=true` を必ず付ける。
+
+## 実機
+
+実機の動かし方は [real_robot.md](real_robot.md) にあります。
+
+### `/dev/ttyUSB0` が見つからない
+
+**症状**：`ls -l /dev/ttyUSB0` や `demo.launch.py` で次のように出る。
+
+```
+ls: '/dev/ttyUSB0' にアクセスできません: そのようなファイルやディレクトリはありません
+```
+
+**原因**：ロボットが PC につながっていない、またはロボットの電源が入っていない。
+
+**解決方法**：電源と USB ケーブルを確認する。正しくつながっていれば、次のコマンドで `Future Technology Devices International ... FT232H` という行が出る。
+
+```bash
+lsusb | grep -i ftdi
+```
+
+### 起動はできたのに、アームが動かない（`START_STATE_INVALID`）
+
+**症状**：`demo.launch.py` は起動し、RViz にもロボットが表示されているのに、サンプルを実行してもアームが動かない。サンプル側のターミナルには次のように出る。
+
+```
+Plan and Execute request aborted
+MoveGroupInterface::move() failed or timeout reached
+```
+
+`demo.launch.py` 側のターミナルには次のように出ている。
+
+```
+Joint 'crane_x7_shoulder_revolute_part_tilt_joint' from the starting state is outside bounds by: [-1.62142 ] should be in the range [-1.6057 ], [1.6057 ].
+PlanningRequestAdapter 'CheckStartStateBounds' failed, because 'Start state out of bounds.'. Aborting planning pipeline.
+START_STATE_INVALID
+```
+
+**原因**：肩を上下に振る関節（shoulder tilt）が、MoveIt で決められた動いてよい範囲（±1.6057 rad）から少し（1° ほど）はみ出している。電源を切ってアームを台に寝かせておくと、この位置になりやすい。MoveIt は、スタートの姿勢が範囲の外だと、安全のために動作の計画をしない。
+
+**解決方法**：
+
+1. アームを手で支えて、`demo.launch.py` を `Ctrl + C` で止める
+2. 肩の関節を、アームが **起き上がる向き** に手で 5° ほど動かす
+3. `demo.launch.py` を起動し直して、もう一度サンプルを実行する
+
+ほかの関節が範囲の外にあるときも同じエラーが出る。エラーに出ている関節名を見て、その関節を範囲の内側に動かす。
