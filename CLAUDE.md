@@ -65,6 +65,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `test/`：gtest。lint は ament_lint_common（uncrustify・lint_cmake・xmllint など）。コードの書式は `ament_uncrustify --reformat <ファイル>` で自動で直せる
 - `launch/` のファイルは C++ パッケージでも Python で書く（ROS 2 の標準）
 - `launch/`：エントリポイントは `main.launch.py`
+- `perception/`：認識（B・堀さん）の試作コード・写真・メモの置き場。`colcon test` の lint 対象外（CMakeLists.txt の AMENT_LINT_AUTO_FILE_EXCLUDE、pep257 は launch/・test/ のみ）。完成したら `src/` のノードにする
 - `config/`：カメラ・パラメータ設定
 - `docs/`：発表資料・議事録・環境構築手順
 
