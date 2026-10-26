@@ -63,6 +63,7 @@ NODE_ARGS = {
     'comp_max_mm': ('10.0', float, 'pick_move mode: max total correction [mm] (safety)'),
     'comp_use_z': ('false', bool, 'pick_move mode: also correct the height'),
     'comp_fake_error_mm': ('0.0', float, 'test on Mock only: pretend a y error [mm]'),
+    'planar_tol_deg': ('5.0', float, 'pick_move mode: max arm twist [deg] above the piece'),
 }
 
 
