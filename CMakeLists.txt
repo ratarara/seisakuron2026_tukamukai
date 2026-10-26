@@ -12,8 +12,11 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(angles REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(moveit_ros_planning_interface REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
 # ソルバー（ROS に依存しないライブラリ）
@@ -38,10 +41,21 @@ add_executable(solver_viz src/solver_viz.cpp)
 target_link_libraries(solver_viz tukamukai_geometry)
 ament_target_dependencies(solver_viz rclcpp geometry_msgs std_msgs visualization_msgs)
 
+# 置く・つかむ動作の確認用ノード（MoveIt）
+add_executable(pick_place_node src/pick_place_node.cpp)
+ament_target_dependencies(pick_place_node
+  angles
+  geometry_msgs
+  moveit_ros_planning_interface
+  rclcpp
+  tf2_geometry_msgs
+)
+target_link_libraries(pick_place_node tukamukai_geometry)
+
 install(TARGETS tukamukai_solver tukamukai_geometry
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
-install(TARGETS solver_demo solver_viz
+install(TARGETS solver_demo solver_viz pick_place_node
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/
   DESTINATION include)

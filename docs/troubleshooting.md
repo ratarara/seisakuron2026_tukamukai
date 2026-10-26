@@ -155,3 +155,86 @@ START_STATE_INVALID
 3. `demo.launch.py` を起動し直して、もう一度サンプルを実行する
 
 ほかの関節が範囲の外にあるときも同じエラーが出る。エラーに出ている関節名を見て、その関節を範囲の内側に動かす。
+
+### 動かしていないのに、2 分ほどでアームの力が抜ける（`Communication timeout!`）
+
+**症状**：アームを止めたまま（PC でコードを直している間など）2 分ほどたつと、アームの力が急に抜けて倒れる。`demo.launch.py` 側のターミナルには次のように出ている。
+
+```
+[CraneX7Hardware]: Failed to sync read from servo motors.
+[CraneX7Hardware]: Communication timeout!
+[controller_manager]: Deactivating following hardware components as their write cycle resulted in an error: [ crane_x7 ]
+```
+
+このあとは、どのコマンドを実行してもアームは動かない。
+
+**原因**：はっきりとは分かっていない。2026-10-19 に 4 回起き、どれも、アームを止めたまま数分たったあとに、全部のモーターから同時に返事がなくなった。1 回は、そのあと USB の番号が `ttyUSB0` から `ttyUSB1` に変わっていたので、USB の接続が一瞬切れた可能性がある（ケーブルやコネクタの接触）。
+
+**危ないところ**：力が抜けると、アームが自分の重さで倒れる。手や物を挟んだり、アームが机にぶつかったりする。
+
+**決まり**：**ロボットを動かしていないとき（PC で変更をしている間など）は、ロボットの線を抜いておく。** 抜くときは、次の順番で行う。
+
+1. アームを手で支える（ソフトを止めた瞬間に力が抜ける）
+2. `demo.launch.py` を `Ctrl + C` で止める
+3. ロボットの線を抜く
+
+**起きてしまったとき**：
+
+1. アームを手で支えて、`demo.launch.py` を `Ctrl + C` で止める
+2. ロボットの電源を入れ直す
+3. `ls /dev/ttyUSB*` で USB の番号を確かめる（変わっていることがある。次の項目）
+4. `demo.launch.py` を起動し直す
+
+### USB の番号が `ttyUSB0` から `ttyUSB1` に変わる
+
+**症状**：`demo.launch.py` で `Failed to connect a robot.` などと出て起動しない。`ls /dev/ttyUSB*` を見ると `/dev/ttyUSB1` になっている。
+
+**原因**：USB の接続が切れてつながり直すと、別の番号になることがある。古い番号を使っているプログラム（止め忘れた `demo.launch.py` など）が残っていると、起きやすい。
+
+**解決方法**：`port_name` を今の番号にして起動する。`latency_timer` の設定も、その番号に対して行う。
+
+```bash
+ls /dev/ttyUSB*
+ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB1
+```
+
+### `Overrun detected!` が 1 秒ごとに出る
+
+**症状**：`demo.launch.py` 側のターミナルに、次の警告がずっと出る。アームの動きがカクついたり、通信が切れやすくなったりする。
+
+```
+[controller_manager]: Overrun detected! The controller manager missed its desired rate of 200 Hz. The loop took 12.566629 ms (missed cycles : 3).
+```
+
+**原因**：USB の `latency_timer` が初期値の 16（ms）のまま。制御は 5 ms ごとに動いているので、モーターの返事を待つ時間（`Read time` が 12〜15 ms）に間に合わない。USB を抜き差しするたびに 16 に戻る。
+
+**解決方法**：[real_robot.md](real_robot.md) の手順で 1 にする。毎回するのが面倒なら、次の設定をしておくと、USB をつなぐたびに自動で 1 になる（PC ごとに 1 回だけ）。
+
+```bash
+echo 'ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTR{latency_timer}="1"' | sudo tee /etc/udev/rules.d/99-crane-x7-latency.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+`cat /sys/bus/usb-serial/devices/ttyUSB0/latency_timer` で `1` と出れば OK。起動直後に数回 `Overrun` が出るのは問題ない。
+
+### 実機を起動したのに、アームに力が入らない（`mock_components`）
+
+**症状**：`demo.launch.py` はエラーなく起動し、RViz にもロボットが出るのに、実機のアームに力が入らない。関節の角度（`ros2 topic echo /joint_states`）が全部 0 のまま。ログには次のように出ている。
+
+```
+[controller_manager]: Loaded hardware 'crane_x7' from plugin 'mock_components/GenericSystem'
+```
+
+実機のときは、ここが `crane_x7_hardware/CraneX7Hardware` になる。
+
+**原因**：前に Mock（`use_mock_components:=true`）で起動したときの `robot_state_publisher` が止まらずに残っていて、Mock 用のロボットの定義を流し続けている。新しく起動した `demo.launch.py` が、そちらを先に受け取ってしまう。
+
+**解決方法**：残っているプログラムを止めてから、起動し直す。
+
+```bash
+ps -eo pid,args | grep -E "[r]obot_state_publisher|[r]os2_control_node|[m]ove_group|[r]viz2"
+kill <上で出た番号>
+```
+
+何も出なくなってから `demo.launch.py` を起動する。Mock を止めるときは、`Ctrl + C` のあとに、このコマンドで何も残っていないことを確かめる。
