@@ -55,7 +55,7 @@ NODE_ARGS = {
     'lift_dz': ('0.05', float, 'lift_place / pick_move mode: how high to lift [m]'),
     'lift_speed': ('0.02', float, 'lift_place / pick_move mode: lifting speed [m/s]'),
     'place_dx': ('0.0', float, 'pick_move mode: move forward by [m] before placing'),
-    'place_dy': ('0.13', float, 'pick_move mode: move left by [m] before placing'),
+    'place_dy': ('0.15', float, 'pick_move mode: move left by [m] before placing'),
     'pick_grasp_deg': ('-2.0', float, 'pick_move mode: gripper angle [deg] to grasp'),
 }
 

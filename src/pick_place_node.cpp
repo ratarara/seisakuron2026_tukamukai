@@ -290,6 +290,18 @@ public:
       }
     }
     const auto code = result.get();
+
+    // 目標（waypoints の最後）と、モーターのエンコーダが読んだ実際の手の位置の差を表示する。
+    // 腕が目標に着いているか、重さでたわんでいないかの確認に使う（止められたときは除く）
+    if (!stopped_by_user && static_cast<bool>(code)) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 止まるのを待つ
+      const auto actual = move_group_arm_->getCurrentPose().pose.position;
+      const auto & goal = waypoints.back().position;
+      RCLCPP_INFO(
+        logger, "[cartesian] %s: error (actual - target) dx=%+.1f dy=%+.1f dz=%+.1f [mm]",
+        what.c_str(), (actual.x - goal.x) * 1000.0, (actual.y - goal.y) * 1000.0,
+        (actual.z - goal.z) * 1000.0);
+    }
     return stopped_by_user || static_cast<bool>(code);
   }
 
@@ -712,7 +724,7 @@ int main(int argc, char ** argv)
   const double lift_dz = node->get_parameter_or<double>("lift_dz", 0.05);
   const double lift_speed = node->get_parameter_or<double>("lift_speed", 0.02);
   const double place_dx = node->get_parameter_or<double>("place_dx", 0.0);
-  const double place_dy = node->get_parameter_or<double>("place_dy", 0.13);
+  const double place_dy = node->get_parameter_or<double>("place_dy", 0.15);
   const double pick_grasp_deg = node->get_parameter_or<double>("pick_grasp_deg", -2.0);
   const double down_elbow_min_deg = node->get_parameter_or<double>("down_elbow_min_deg", -135.0);
   const double down_elbow_max_deg = node->get_parameter_or<double>("down_elbow_max_deg", -45.0);
