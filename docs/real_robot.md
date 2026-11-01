@@ -104,6 +104,8 @@ ros2 launch crane_x7_examples example.launch.py example:=gripper_control
 
 決まった位置（置き場）に置いた 4 ピース（I・S・L・L）を、ソルバーの答えどおりに 4×4 のケースへ運びます。**実機ではまだ動かしていません**。最初は必ず 1 動作ずつ確かめてください。
 
+初めて動かす人向けの手順と確認項目は [fill_4x4_check.md](fill_4x4_check.md) にあります。
+
 ```bash
 ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0 timeout_seconds:=3.0
 # 別のターミナルで
