@@ -25,8 +25,8 @@ target_include_directories(tukamukai_solver PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
-# マスの座標をケース座標・ロボット座標に直す（ROS に依存しないライブラリ、#31）
-add_library(tukamukai_geometry src/board_geometry.cpp)
+# マスの座標をケース座標・ロボット座標に直す、手の向きを決める（ROS に依存しないライブラリ、#31・#27）
+add_library(tukamukai_geometry src/board_geometry.cpp src/grasp_yaw.cpp)
 target_include_directories(tukamukai_geometry PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
@@ -75,6 +75,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_board_geometry test/test_board_geometry.cpp)
   target_link_libraries(test_board_geometry tukamukai_geometry)
+
+  ament_add_gtest(test_grasp_yaw test/test_grasp_yaw.cpp)
+  target_link_libraries(test_grasp_yaw tukamukai_geometry)
 endif()
 
 ament_package()

@@ -26,6 +26,7 @@
 #include <future>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -38,6 +39,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tukamukai/board_geometry.hpp"
+#include "tukamukai/grasp_yaw.hpp"
 
 using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
 
@@ -76,6 +78,9 @@ public:
     "crane_x7_upper_arm_revolute_part_rotate_joint";  // 肘
   inline static const char * const kForearmTwistJoint =
     "crane_x7_lower_arm_fixed_part_joint";  // 前腕のねじり
+  inline static const char * const kWristJoint = "crane_x7_wrist_joint";  // 手首の回転（関節 7）
+  // 手首の関節の可動範囲に残す余裕 [deg]。補正や運ぶ途中で少し回っても、範囲を超えないように
+  inline static const double kWristMarginDeg = 5.0;
 
   // ノードを受け取り、アーム・グリッパのMoveGroupInterfaceを初期化する
   explicit PickAndPlace(rclcpp::Node::SharedPtr node)
@@ -478,17 +483,48 @@ public:
     const std::string & what)
   {
     if (!confirm_step(what)) {return false;}
-    auto state = move_group_arm_->getCurrentState(2.0);
+    const auto state = solve_planar_ik(pose, tol_deg);
     if (!state) {
-      RCLCPP_ERROR(logger, "[planar] could not get the current robot state");
+      RCLCPP_ERROR(
+        logger, "[planar] %s: no IK solution with twists within %.0f deg", what.c_str(), tol_deg);
       return false;
     }
-    const auto * group = state->getJointModelGroup("arm");
+    // 目標の手の向きへ、手首の関節だけを回す（手の位置と、腕の平らな形は変わらない）
+    double turn = 0.0;
+    if (!turn_wrist_in_state(*state, yaw_deg_of(pose), logger, turn)) {return false;}
+    std::vector<double> joints;
+    state->copyJointGroupPositions("arm", joints);
+    RCLCPP_INFO(
+      logger, "[planar] %s: pan=%.1f twist=%.1f elbow=%.1f forearm_twist=%.1f wrist=%.1f "
+      "[deg]", what.c_str(), angles::to_degrees(state->getVariablePosition(kPanJoint)),
+      angles::to_degrees(state->getVariablePosition(kTwistJoint)),
+      angles::to_degrees(state->getVariablePosition(kElbowJoint)),
+      angles::to_degrees(state->getVariablePosition(kForearmTwistJoint)),
+      angles::to_degrees(state->getVariablePosition(kWristJoint)));
+    move_group_arm_->setJointValueTarget(joints);
+    return static_cast<bool>(move_group_arm_->move());
+  }
+
+  // pose の位置に、手の向きを届くことが分かっている -90° にした、平らな形の腕の状態を IK で
+  // 求める（腕は動かさない）。解がなければ nullptr。
+  // ねじりの条件が厳しいので、ほかの手の向きのままだと、ランダムに探す IK が時間内に解を
+  // 見つけられないことがある。目標の向きへは、あとで手首の関節だけを回して合わせる
+  moveit::core::RobotStatePtr solve_planar_ik(
+    const geometry_msgs::msg::Pose & pose, const double tol_deg)
+  {
+    auto state = move_group_arm_->getCurrentState(2.0);
+    if (!state) {return nullptr;}
 
     // IK の出発点：ねじりを 0、根本を手の方向に向けた形（解がこの近くで見つかりやすい）
     state->setVariablePosition(kPanJoint, std::atan2(pose.position.y, pose.position.x));
     state->setVariablePosition(kTwistJoint, 0.0);
     state->setVariablePosition(kForearmTwistJoint, 0.0);
+
+    geometry_msgs::msg::Pose preferred = pose;
+    tf2::Quaternion q_preferred;
+    q_preferred.setRPY(
+      angles::from_degrees(-180.0), 0.0, angles::from_degrees(tukamukai::kPreferredHandDeg));
+    preferred.orientation = tf2::toMsg(q_preferred);
 
     // 解の条件：ねじり 2 つが ±tol_deg 以内、肘が set_elbow_limit の範囲内
     const double tol = angles::from_degrees(tol_deg);
@@ -501,21 +537,141 @@ public:
                std::abs(s->getVariablePosition(kForearmTwistJoint)) <= tol &&
                (!elbow_limit_enabled_ || (elbow >= elbow_min_ && elbow <= elbow_max_));
       };
-    if (!state->setFromIK(group, pose, 1.0, acceptable)) {
-      RCLCPP_ERROR(
-        logger, "[planar] %s: no IK solution with twists within %.0f deg", what.c_str(), tol_deg);
+    if (!state->setFromIK(state->getJointModelGroup("arm"), preferred, 1.0, acceptable)) {
+      return nullptr;
+    }
+    return state;
+  }
+
+  // 手の向きの候補のうち、手が届く最初のものを選ぶ（腕は動かさない）。
+  // つかむ場所の真上（つかむ手の向き）、置く場所の真上（運んできた手の向き、置く手の向き）の
+  // 3 か所で、手首の関節が可動範囲に収まるかを確かめる。届く候補がなければ false
+  bool choose_reachable_yaw(
+    const std::vector<tukamukai::GraspYaw> & candidates,
+    const geometry_msgs::msg::Pose & pick_above, const geometry_msgs::msg::Pose & place_above,
+    const double tol_deg, const rclcpp::Logger & logger, tukamukai::GraspYaw & chosen)
+  {
+    const auto pick_state = solve_planar_ik(pick_above, tol_deg);
+    const auto place_state = solve_planar_ik(place_above, tol_deg);
+    if (!pick_state || !place_state) {
+      RCLCPP_ERROR(logger, "[yaw] no IK solution above the %s", pick_state ? "place" : "piece");
       return false;
     }
+    const auto reachable = [](const moveit::core::RobotState & base, const double yaw) {
+        moveit::core::RobotState state(base);
+        return wrist_target_for_yaw(state, yaw).has_value();
+      };
+    for (const auto & g : candidates) {
+      const bool ok = reachable(*pick_state, g.pick_hand) &&
+        reachable(*place_state, g.pick_hand) && reachable(*place_state, g.place_hand);
+      RCLCPP_INFO(
+        logger, "[yaw] hand yaw %.1f -> %.1f (wrist turn %.1f%s) [deg] : %s", g.pick_hand,
+        g.place_hand, g.wrist_turn, g.flipped ? ", handle from the other side" : "",
+        ok ? "reachable" : "out of the wrist range");
+      if (ok) {
+        chosen = g;
+        return true;
+      }
+    }
+    RCLCPP_ERROR(logger, "[yaw] no reachable hand yaw");
+    return false;
+  }
+
+  // 今の手の向き（手首の付け根の yaw）[deg]。手を真下に向けているときの値
+  double current_hand_yaw_deg()
+  {
+    const auto q = move_group_arm_->getCurrentPose().pose.orientation;
+    double roll, pitch, yaw;
+    tf2::Matrix3x3(tf2::Quaternion(q.x, q.y, q.z, q.w)).getRPY(roll, pitch, yaw);
+    return angles::to_degrees(yaw);
+  }
+
+  // Pose の手の向き（yaw）[deg]
+  static double yaw_deg_of(const geometry_msgs::msg::Pose & pose)
+  {
+    double roll, pitch, yaw;
+    tf2::Matrix3x3(tf2::Quaternion(
+        pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w))
+    .getRPY(roll, pitch, yaw);
+    return angles::to_degrees(yaw);
+  }
+
+  // state の腕の形のまま、手の向きを target_yaw_deg にする手首の関節（関節 7）の角度 [rad] を
+  // 求める。可動範囲（余裕 kWristMarginDeg つき）に収まらなければ、値なし。
+  // 手首の関節を回す向きと、手の向きが変わる向きの関係は腕の形で変わるので、
+  // ロボットのモデルで関節を少し回したときの手の向きの変化から、回す向きを決める。
+  // 手の向きは 360° で同じなので、回す向きは短いほうから試し、だめなら反対回りも試す
+  static std::optional<double> wrist_target_for_yaw(
+    moveit::core::RobotState & state, const double target_yaw_deg)
+  {
+    state.update();
+    const auto * link = state.getLinkModel("crane_x7_gripper_base_link");
+    const auto yaw_of = [&]() {
+        const Eigen::Matrix3d r = state.getGlobalLinkTransform(link).rotation();
+        return angles::to_degrees(std::atan2(r(1, 0), r(0, 0)));
+      };
+    const double wrist0 = state.getVariablePosition(kWristJoint);
+    const double yaw0 = yaw_of();
+    state.setVariablePosition(kWristJoint, wrist0 + angles::from_degrees(1.0));
+    state.update();
+    const double sign = tukamukai::normalize_deg(yaw_of() - yaw0) > 0.0 ? 1.0 : -1.0;
+    state.setVariablePosition(kWristJoint, wrist0);
+    state.update();
+
+    const double turn = tukamukai::normalize_deg(target_yaw_deg - yaw0);
+    const auto & bounds = state.getRobotModel()->getVariableBounds(kWristJoint);
+    const double margin = angles::from_degrees(kWristMarginDeg);
+    for (const double t : {turn, turn > 0.0 ? turn - 360.0 : turn + 360.0}) {
+      const double wrist = wrist0 + sign * angles::from_degrees(t);
+      if (wrist >= bounds.min_position_ + margin && wrist <= bounds.max_position_ - margin) {
+        return wrist;
+      }
+    }
+    return std::nullopt;
+  }
+
+  // state の手首の関節（関節 7）だけを回して、手の向きを target_yaw_deg にする
+  // （手首の付け根は手首の関節の軸の上にあるので、手の位置は変わらない）。
+  // turn_deg：手首の関節を回す量（手の向きの変化とは符号が逆のことがある）。
+  // 可動範囲を超えるときは false（state は変えない）
+  bool turn_wrist_in_state(
+    moveit::core::RobotState & state, const double target_yaw_deg,
+    const rclcpp::Logger & logger, double & turn_deg)
+  {
+    const auto wrist = wrist_target_for_yaw(state, target_yaw_deg);
+    if (!wrist) {
+      RCLCPP_ERROR(
+        logger, "[wrist] hand yaw %.1f deg is out of the wrist range (wrist joint now %.1f deg)",
+        target_yaw_deg, angles::to_degrees(state.getVariablePosition(kWristJoint)));
+      return false;
+    }
+    turn_deg = angles::to_degrees(*wrist - state.getVariablePosition(kWristJoint));
+    state.setVariablePosition(kWristJoint, *wrist);
+    state.update();
+    return true;
+  }
+
+  // 手首の関節（関節 7）だけを回して、手の向きを target_yaw_deg にする（手の位置は変わらない）
+  bool rotate_wrist_to(const double target_yaw_deg, const rclcpp::Logger & logger)
+  {
+    char text[120];
+    std::snprintf(text, sizeof(text), "Rotate the wrist to hand yaw %.1f [deg]", target_yaw_deg);
+    if (!confirm_step(text)) {return false;}
+
+    auto state = move_group_arm_->getCurrentState(2.0);
+    if (!state) {return false;}
+    const double yaw0 = current_hand_yaw_deg();
+    double turn = 0.0;
+    if (!turn_wrist_in_state(*state, target_yaw_deg, logger, turn)) {return false;}
     std::vector<double> joints;
-    state->copyJointGroupPositions(group, joints);
-    RCLCPP_INFO(
-      logger, "[planar] %s: pan=%.1f twist=%.1f elbow=%.1f forearm_twist=%.1f [deg]",
-      what.c_str(), angles::to_degrees(state->getVariablePosition(kPanJoint)),
-      angles::to_degrees(state->getVariablePosition(kTwistJoint)),
-      angles::to_degrees(state->getVariablePosition(kElbowJoint)),
-      angles::to_degrees(state->getVariablePosition(kForearmTwistJoint)));
+    state->copyJointGroupPositions("arm", joints);
     move_group_arm_->setJointValueTarget(joints);
-    return static_cast<bool>(move_group_arm_->move());
+    if (!static_cast<bool>(move_group_arm_->move())) {return false;}
+    RCLCPP_INFO(
+      logger, "[wrist] wrist joint turned %.1f: hand yaw %.1f -> %.1f (target %.1f) [deg]", turn,
+      yaw0,
+      current_hand_yaw_deg(), target_yaw_deg);
+    return true;
   }
 
   // 今の上腕のねじり（twist）[deg]。左右へ運ぶ前に、腕が平らな形か確かめるため
@@ -777,20 +933,45 @@ bool run_fingertip_zero(
 bool run_pick_move(
   PickAndPlace & robot, const rclcpp::Logger & logger, const HandPose & pick,
   const double grasp_deg, const double release_deg, const double dz, const double speed,
-  const double dx, const double dy, const CompConfig & comp, const double planar_tol_deg)
+  const double dx, const double dy, const CompConfig & comp, const double planar_tol_deg,
+  const char kind, const double pick_piece_deg, const double place_piece_deg,
+  const double hand_offset_deg)
 {
-  HandPose above = pick;
-  above.z += dz;
+  // ピースの向きから手の向きの候補を並べ、手が届く最初の候補を使う
+  HandPose pick_hand = pick;
   HandPose place = pick;
   place.x += dx;
   place.y += dy;
+  HandPose probe_pick = pick_hand;
+  probe_pick.z += dz;
+  HandPose probe_place = place;
+  probe_place.z += dz;
+  tukamukai::GraspYaw yaw{};
+  if (!robot.choose_reachable_yaw(
+      tukamukai::grasp_yaw_candidates(kind, pick_piece_deg, place_piece_deg, hand_offset_deg),
+      to_pose(probe_pick), to_pose(probe_place), planar_tol_deg, logger, yaw))
+  {
+    return false;
+  }
+
+  pick_hand.yaw = yaw.pick_hand;
+  HandPose above = pick_hand;
+  above.z += dz;
+  place.yaw = yaw.place_hand;
   HandPose place_above = place;
   place_above.z += dz;
+  // 横に運ぶあいだは、つかんだときの手の向きのまま。置く場所の真上で手首を回す
+  HandPose place_above_before_turn = place_above;
+  place_above_before_turn.yaw = yaw.pick_hand;
 
   RCLCPP_INFO(
     logger, "[pick_move] pick (%.3f, %.3f, %.3f) -> place (%.3f, %.3f, %.3f) [m], "
     "compensation %s", pick.x, pick.y, pick.z, place.x, place.y, place.z,
     comp.enabled ? "ON" : "OFF");
+  RCLCPP_INFO(
+    logger, "[pick_move] piece %c: piece yaw %.1f -> %.1f, hand yaw %.1f -> %.1f "
+    "(wrist turn %.1f%s) [deg]", kind, pick_piece_deg, place_piece_deg, yaw.pick_hand,
+    yaw.place_hand, yaw.wrist_turn, yaw.flipped ? ", handle grasped from the other side" : "");
   bool stopped = false;
   const auto step = [&logger](const bool ok, const char * what) {
       RCLCPP_INFO(logger, "[pick_move] %s : %s", what, ok ? "OK" : "FAILED");
@@ -824,11 +1005,13 @@ bool run_pick_move(
     robot.correct_position(to_pose(above), speed, comp, at_pick, logger, "above the piece"),
     "correct above the piece") &&
     step(robot.move_gripper_angle(angles::from_degrees(release_deg)), "open") &&
-    compensated(pick, at_pick, "go down") &&
+    compensated(pick_hand, at_pick, "go down") &&
     step(robot.move_gripper_angle(angles::from_degrees(grasp_deg)), "grasp") &&
     straight(above, "lift") &&
     log_twist() &&
-    compensated(place_above, at_place, "move sideways") &&
+    compensated(place_above_before_turn, at_place, "move sideways") &&
+    (std::abs(yaw.wrist_turn) < 0.5 ||
+    step(robot.rotate_wrist_to(yaw.place_hand, logger), "rotate the wrist")) &&
     compensated(place, at_place, "put down") &&
     step(robot.move_gripper_angle(angles::from_degrees(release_deg)), "release") &&
     straight(place_above, "move away");
@@ -1001,6 +1184,12 @@ int main(int argc, char ** argv)
   const double place_dx = node->get_parameter_or<double>("place_dx", 0.0);
   const double place_dy = node->get_parameter_or<double>("place_dy", 0.15);
   const double pick_grasp_deg = node->get_parameter_or<double>("pick_grasp_deg", -2.0);
+  // ピースの種類と向き [deg]（ソルバー・認識と同じ、上から見て反時計回り）
+  const std::string piece_kind = node->get_parameter_or<std::string>("piece_kind", "L");
+  const double pick_piece_deg = node->get_parameter_or<double>("pick_piece_deg", 0.0);
+  const double place_piece_deg = node->get_parameter_or<double>("place_piece_deg", 0.0);
+  const double hand_offset_deg =
+    node->get_parameter_or<double>("hand_offset_deg", tukamukai::kDefaultHandOffsetDeg);
   CompConfig comp;
   comp.enabled = node->get_parameter_or<bool>("comp_enabled", true);
   comp.tol = node->get_parameter_or<double>("comp_tol_mm", 1.0) / 1000.0;
@@ -1119,7 +1308,8 @@ int main(int argc, char ** argv)
   } else if (mode == "pick_move") {
     ok = run_pick_move(
       controller, logger, PICK, pick_grasp_deg, gripper_open_deg, lift_dz, lift_speed,
-      place_dx, place_dy, comp, planar_tol_deg);
+      place_dx, place_dy, comp, planar_tol_deg, piece_kind.empty() ? 'L' : piece_kind[0],
+      pick_piece_deg, place_piece_deg, hand_offset_deg);
     keep_gripper = true;  // 終わったら home に戻り、グリッパは開いたままにする
   } else if (keep_start) {
     ok = run_lift_place(controller, logger, lift_dz, lift_speed, gripper_open_deg);
