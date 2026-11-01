@@ -15,7 +15,7 @@ namespace
 constexpr double kEps = 1e-9;
 
 // 置いたピースの向き = 置く手の向き - hand_offset（逆向きにつかんだら、さらに 180° ずれる）
-double placed_piece_deg(const GraspYaw & g, const double hand_offset = -90.0)
+double placed_piece_deg(const GraspYaw & g, const double hand_offset = 0.0)
 {
   return normalize_deg(g.place_hand - hand_offset - (g.flipped ? 180.0 : 0.0));
 }
@@ -42,10 +42,10 @@ TEST(GraspYaw, Symmetry)
   EXPECT_EQ(piece_symmetry_deg('L'), 360.0);
 }
 
-// 今までの実験と同じ：ピースの向き 0° は、手の向き -90° でつかんで、そのまま置く
+// 今までの実験と同じ：ピースの向き -90° は、手の向き -90° でつかんで、そのまま置く
 TEST(GraspYaw, SameAsExperiment)
 {
-  const GraspYaw g = grasp_yaw_candidates('L', 0.0, 0.0).front();
+  const GraspYaw g = grasp_yaw_candidates('L', -90.0, -90.0).front();
   EXPECT_NEAR(g.pick_hand, -90.0, kEps);
   EXPECT_NEAR(g.place_hand, -90.0, kEps);
   EXPECT_NEAR(g.wrist_turn, 0.0, kEps);
@@ -58,13 +58,13 @@ TEST(GraspYaw, NumberOfCandidates)
   EXPECT_EQ(grasp_yaw_candidates('L', 0.0, 0.0).size(), 2u);
   EXPECT_EQ(grasp_yaw_candidates('I', 0.0, 0.0).size(), 4u);
   EXPECT_EQ(grasp_yaw_candidates('O', 0.0, 0.0).size(), 8u);
-  EXPECT_EQ(grasp_yaw_candidates('L', 0.0, 0.0, -90.0, false).size(), 1u);
+  EXPECT_EQ(grasp_yaw_candidates('L', 0.0, 0.0, 0.0, false).size(), 1u);
 }
 
 // 手の向き 0° が届かないときのために、180° でつかむ候補も必ず入っている
 TEST(GraspYaw, BothGraspsAreCandidates)
 {
-  const auto candidates = grasp_yaw_candidates('L', 90.0, 0.0);
+  const auto candidates = grasp_yaw_candidates('L', 0.0, 90.0);
   ASSERT_EQ(candidates.size(), 2u);
   EXPECT_NEAR(std::abs(normalize_deg(candidates[0].pick_hand - candidates[1].pick_hand)), 180.0,
     kEps);
@@ -78,8 +78,8 @@ TEST(GraspYaw, FirstCandidateIsNearPreferred)
     const GraspYaw g = grasp_yaw_candidates('L', piece, 0.0).front();
     EXPECT_LE(std::abs(normalize_deg(g.pick_hand + 90.0)), 90.0 + kEps) << "piece=" << piece;
   }
-  // ピースの向き 180° は、手の向き 90° ではなく、取っ手を逆からつかんで -90°
-  const GraspYaw g = grasp_yaw_candidates('L', 180.0, 0.0).front();
+  // ピースの向き 90° は、手の向き 90° ではなく、取っ手を逆からつかんで -90°
+  const GraspYaw g = grasp_yaw_candidates('L', 90.0, 0.0).front();
   EXPECT_NEAR(g.pick_hand, -90.0, kEps);
   EXPECT_TRUE(g.flipped);
 }
