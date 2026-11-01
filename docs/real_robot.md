@@ -110,6 +110,10 @@ ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0 timeout_sec
 ros2 launch tukamukai pick_place.launch.py mode:=fill_4x4 step_by_step:=true speed_scale:=0.3
 ```
 
+配置は次の図のとおりです（上から見た図。縮尺どおり）。
+
+![fill_4x4 の配置](fill_4x4_layout.png)
+
 **ピースの置き方**：土台の中心から測って、**取っ手の中心** を次の位置に合わせます（X が前、Y が左）。
 
 | 順番 | ピース | 置き場 X | 置き場 Y | ケースに置く位置 X, Y | 置く向き |
