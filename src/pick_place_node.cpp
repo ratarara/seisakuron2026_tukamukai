@@ -60,7 +60,18 @@ struct CompConfig
   // 試験用：測ったずれに、横（y）にこの量を足す [m]。Mock は腕が指令どおりに止まり、
   // ずれが 0 なので、補正の動きを確かめるときに使う。実機では 0 のままにする
   double fake_error_y = 0.0;
+  // 手の傾きも補正するか。関節のたわみで手が真下を向かないと、指先が目標から大きくずれる
+  // （手首の付け根から指先まで約 90 mm あるので、6° の傾きで約 9 mm）
+  bool use_tilt = true;
+  double tilt_tol_deg = 0.5;   // これより小さい傾きは補正しない [deg]
+  double max_tilt_deg = 12.0;  // 向きをずらす量の上限 [deg]。超えたら補正しない
+  // 試験用：測った手の向きを、指先が前（+x）へこの角度だけ傾いたものとして扱う [deg]。
+  // fake_error_y と同じく、Mock で補正の動きを確かめるときに使う。実機では 0 のままにする
+  double fake_tilt_deg = 0.0;
 };
+
+// 手首の付け根（gripper_base_link）から実際の指先まで [m]。fingertip_zero の実測（ログに出す目安）
+constexpr double REAL_FINGER_LENGTH = 0.0896;
 
 // 指令のずらし量 [m]
 struct Offset
@@ -68,7 +79,21 @@ struct Offset
   double x = 0.0;
   double y = 0.0;
   double z = 0.0;
+  tf2::Quaternion rot{0.0, 0.0, 0.0, 1.0};  // 指令の向きをずらす回転（base_link から見て）
 };
+
+// target に offset を足した指令を作る
+geometry_msgs::msg::Pose with_offset(const geometry_msgs::msg::Pose & target, const Offset & offset)
+{
+  geometry_msgs::msg::Pose command = target;
+  command.position.x += offset.x;
+  command.position.y += offset.y;
+  command.position.z += offset.z;
+  tf2::Quaternion q;
+  tf2::fromMsg(target.orientation, q);
+  command.orientation = tf2::toMsg((offset.rot * q).normalized());
+  return command;
+}
 
 class PickAndPlace
 {
@@ -310,15 +335,24 @@ public:
     if (!confirm_step(what)) {return false;}
 
     // 経路の長さ（今の手の位置から、waypoints を順にたどった距離）
-    geometry_msgs::msg::Point prev = move_group_arm_->getCurrentPose().pose.position;
+    // と、手の向きを変える角度
+    const auto start = move_group_arm_->getCurrentPose().pose;
+    geometry_msgs::msg::Point prev = start.position;
+    tf2::Quaternion prev_q;
+    tf2::fromMsg(start.orientation, prev_q);
     double length = 0.0;
+    double turn = 0.0;
     for (const auto & w : waypoints) {
       length += std::hypot(
         w.position.x - prev.x, w.position.y - prev.y, w.position.z - prev.z);
       prev = w.position;
+      tf2::Quaternion q;
+      tf2::fromMsg(w.orientation, q);
+      turn += prev_q.angleShortestPath(q);
+      prev_q = q;
     }
-    // もう着いている（0.5 mm 未満）ときは動かない。短すぎる経路は計算できないため
-    if (length < 0.0005) {return true;}
+    // もう着いている（0.5 mm 未満、0.2° 未満）ときは動かない。短すぎる経路は計算できないため
+    if (length < 0.0005 && turn < angles::from_degrees(0.2)) {return true;}
 
     moveit_msgs::msg::RobotTrajectory trajectory;
     const double eef_step = 0.001;  // 1 mm ごとに経路を計算する
@@ -347,7 +381,10 @@ public:
     }
 
     // 一定の速さで動くよう、各点の時刻を付け直す（点は経路上にほぼ等間隔に並ぶ）
-    const double duration = std::max(length * fraction / speed, 0.1);
+    // 向きを変えるだけの動きが速くなりすぎないよう、向きは 1 秒に 5° までにする
+    const double max_turn_speed = angles::from_degrees(5.0);
+    const double duration =
+      std::max({length * fraction / speed, turn * fraction / max_turn_speed, 0.1});
     for (size_t i = 0; i < points.size(); ++i) {
       const double t = duration * static_cast<double>(i) / static_cast<double>(points.size() - 1);
       points[i].time_from_start = rclcpp::Duration::from_seconds(t);
@@ -415,23 +452,54 @@ public:
   {
     for (int k = 0; ; ++k) {
       std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 止まるのを待つ
-      const auto actual = move_group_arm_->getCurrentPose().pose.position;
+      const auto pose = move_group_arm_->getCurrentPose().pose;
+      const auto & actual = pose.position;
       const double ex = actual.x - target.position.x;
       const double ey = actual.y - target.position.y + comp.fake_error_y;
       const double ez = comp.use_z ? actual.z - target.position.z : 0.0;
-      RCLCPP_INFO(
-        logger, "[comp] %s: try %d error dx=%+.1f dy=%+.1f dz=%+.1f [mm]%s", what.c_str(), k,
-        ex * 1000.0, ey * 1000.0, (actual.z - target.position.z) * 1000.0,
-        comp.use_z ? "" : " (z not corrected)");
 
-      if (std::hypot(ex, ey) < comp.tol && std::abs(ez) < comp.tol) {return true;}
+      // 手の向きのずれ：目標の向きから、実際の向きへの回転（base_link から見て）
+      tf2::Quaternion actual_q;
+      tf2::Quaternion target_q;
+      tf2::fromMsg(pose.orientation, actual_q);
+      tf2::fromMsg(target.orientation, target_q);
+      actual_q = tf2::Quaternion(
+        tf2::Vector3(0.0, 1.0, 0.0), angles::from_degrees(-comp.fake_tilt_deg)) * actual_q;
+      const tf2::Quaternion rot_error = (actual_q * target_q.inverse()).normalized();
+      const double rot_error_deg = angles::to_degrees(rot_error.getAngleShortestPath());
+      // 指先の向きと、指先の位置の目安。tilt は、指先が真下から前（+x）・左（+y）へ傾いた角度
+      const tf2::Vector3 finger = tf2::quatRotate(actual_q, tf2::Vector3(0.0, 0.0, 1.0));
+      RCLCPP_INFO(
+        logger, "[comp] %s: try %d error dx=%+.1f dy=%+.1f dz=%+.1f [mm]%s, "
+        "tilt front=%+.1f left=%+.1f [deg], fingertip about (%.1f, %.1f, %.1f) [mm]",
+        what.c_str(), k, ex * 1000.0, ey * 1000.0, (actual.z - target.position.z) * 1000.0,
+        comp.use_z ? "" : " (z not corrected)",
+        angles::to_degrees(std::atan2(finger.x(), -finger.z())),
+        angles::to_degrees(std::atan2(finger.y(), -finger.z())),
+        (actual.x + finger.x() * REAL_FINGER_LENGTH) * 1000.0,
+        (actual.y + finger.y() * REAL_FINGER_LENGTH) * 1000.0,
+        (actual.z + finger.z() * REAL_FINGER_LENGTH) * 1000.0);
+
+      const bool tilt_ok = !comp.use_tilt || rot_error_deg < comp.tilt_tol_deg;
+      if (std::hypot(ex, ey) < comp.tol && std::abs(ez) < comp.tol && tilt_ok) {return true;}
       if (k >= comp.max_iter) {
-        RCLCPP_WARN(logger, "[comp] %s: still %.1f mm off after %d tries", what.c_str(),
-          std::hypot(ex, ey) * 1000.0, k);
+        RCLCPP_WARN(logger, "[comp] %s: still %.1f mm, %.1f deg off after %d tries", what.c_str(),
+          std::hypot(ex, ey) * 1000.0, rot_error_deg, k);
         return true;  // ずれが残っても、動作は続ける
       }
 
-      Offset next{offset.x - ex, offset.y - ey, offset.z - ez};
+      Offset next{offset.x - ex, offset.y - ey, offset.z - ez, offset.rot};
+      if (comp.use_tilt) {
+        next.rot = (offset.rot * rot_error.inverse()).normalized();
+        const double total_deg = angles::to_degrees(next.rot.getAngleShortestPath());
+        if (total_deg > comp.max_tilt_deg) {
+          RCLCPP_WARN(
+            logger,
+            "[comp] %s: tilt correction %.1f deg is over the limit %.1f deg. Not corrected.",
+            what.c_str(), total_deg, comp.max_tilt_deg);
+          return true;
+        }
+      }
       if (std::hypot(next.x, next.y, next.z) > comp.max_total) {
         // 測り間違いなどで大きく動くのを防ぐ
         RCLCPP_WARN(
@@ -440,13 +508,9 @@ public:
         return true;
       }
       offset = next;
-      geometry_msgs::msg::Pose command = target;
-      command.position.x += offset.x;
-      command.position.y += offset.y;
-      command.position.z += offset.z;
       bool stopped = false;
       if (!move_hand_cartesian(
-          {command}, speed, nullptr, logger, stopped,
+          {with_offset(target, offset)}, speed, nullptr, logger, stopped,
           what + " (correction " + std::to_string(k + 1) + ")", false, false))
       {
         return false;
@@ -460,12 +524,7 @@ public:
     const geometry_msgs::msg::Pose & target, const double speed, const CompConfig & comp,
     Offset & offset, const rclcpp::Logger & logger, const std::string & what)
   {
-    geometry_msgs::msg::Pose command = target;
-    if (comp.enabled) {
-      command.position.x += offset.x;
-      command.position.y += offset.y;
-      command.position.z += offset.z;
-    }
+    const geometry_msgs::msg::Pose command = comp.enabled ? with_offset(target, offset) : target;
     bool stopped = false;
     if (!move_hand_cartesian(
         {command}, speed, nullptr, logger, stopped, what, false, !comp.enabled))
@@ -991,14 +1050,9 @@ bool pick_and_place_piece(
     "(wrist turn %.1f%s) [deg]", m.kind, m.pick_piece_deg, m.place_piece_deg, yaw.pick_hand,
     yaw.place_hand, yaw.wrist_turn, yaw.flipped ? ", handle grasped from the other side" : "");
 
-  bool stopped = false;
   const auto step = [&logger](const bool ok, const char * what) {
       RCLCPP_INFO(logger, "[pick_move] %s : %s", what, ok ? "OK" : "FAILED");
       return ok;
-    };
-  const auto straight = [&](const HandPose & to, const char * what) {
-      return step(
-        robot.move_hand_cartesian({to_pose(to)}, c.speed, nullptr, logger, stopped, what), what);
     };
   // 補正は、つかむ場所・置く場所のそれぞれで、まず真上（周りに当たらない高さ）で横の位置を
   // 合わせ、同じずらし量のまま下ろし、下でもう一度合わせる。場所ごとにずらし量を測り直す
@@ -1032,13 +1086,15 @@ bool pick_and_place_piece(
     compensated(pick, at_pick, "go down") &&
     step(robot.move_gripper_angle(angles::from_degrees(c.grasp_deg)), "grasp") &&
     log_grip() &&
-    straight(above, "lift") &&
+    // 下で測ったずらし量を保ったまま上げる。戻すと、挟んだまま手が前後に動いて傾いてしまう
+    compensated(above, at_pick, "lift") &&
     compensated(place_above_before_turn, at_place, "move sideways") &&
     (std::abs(yaw.wrist_turn) < 0.5 ||
     step(robot.rotate_wrist_to(yaw.place_hand, logger), "rotate the wrist")) &&
     compensated(place, at_place, "put down") &&
     step(robot.move_gripper_angle(angles::from_degrees(c.place_open_deg)), "release") &&
-    straight(place_above, "move away");
+    // ここも同じ。戻すと、開いた指が置いたピースの取っ手に当たるおそれがある
+    compensated(place_above, at_place, "move away");
 }
 
 // テスト7：1 個のピースをつかんで、(dx, dy) [m] だけ横に運んで置く
@@ -1350,7 +1406,7 @@ int main(int argc, char ** argv)
   const double lift_speed = node->get_parameter_or<double>("lift_speed", 0.02);
   const double place_dx = node->get_parameter_or<double>("place_dx", 0.0);
   const double place_dy = node->get_parameter_or<double>("place_dy", 0.15);
-  const double pick_grasp_deg = node->get_parameter_or<double>("pick_grasp_deg", -2.0);
+  const double pick_grasp_deg = node->get_parameter_or<double>("pick_grasp_deg", -4.0);
   // ピースの種類と向き [deg]（ソルバー・認識と同じ、上から見て反時計回り）
   const std::string piece_kind = node->get_parameter_or<std::string>("piece_kind", "L");
   const double pick_piece_deg = node->get_parameter_or<double>("pick_piece_deg", 0.0);
@@ -1386,6 +1442,10 @@ int main(int argc, char ** argv)
   comp.max_total = node->get_parameter_or<double>("comp_max_mm", 15.0) / 1000.0;
   comp.use_z = node->get_parameter_or<bool>("comp_use_z", false);
   comp.fake_error_y = node->get_parameter_or<double>("comp_fake_error_mm", 0.0) / 1000.0;
+  comp.use_tilt = node->get_parameter_or<bool>("comp_use_tilt", true);
+  comp.tilt_tol_deg = node->get_parameter_or<double>("comp_tilt_tol_deg", 0.5);
+  comp.max_tilt_deg = node->get_parameter_or<double>("comp_max_tilt_deg", 12.0);
+  comp.fake_tilt_deg = node->get_parameter_or<double>("comp_fake_tilt_deg", 0.0);
   const double planar_tol_deg = node->get_parameter_or<double>("planar_tol_deg", 5.0);
   const double tip_x = node->get_parameter_or<double>("tip_x", 0.25);
   const double tip_y = node->get_parameter_or<double>("tip_y", 0.0);
@@ -1421,7 +1481,7 @@ int main(int argc, char ** argv)
   const HandPose PICK{
     node->get_parameter_or<double>("pick_x", 0.25),
     node->get_parameter_or<double>("pick_y", 0.0),
-    node->get_parameter_or<double>("pick_z", 0.105),
+    node->get_parameter_or<double>("pick_z", 0.108),
     -180.0, 0.0,
     node->get_parameter_or<double>("pick_yaw", -90.0)};
 
