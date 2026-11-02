@@ -146,6 +146,36 @@ I:  I I I I     S:  . S S     L:  L L L
 
 動き出す前に、全部のピースに手が届くかを確かめます。届かないときや、手首が 1 回も回らないときは、動かずに止まります。
 
+### 認識の結果からつかむ（`piece_source:=tf`）
+
+置き場を決め打ちにせず、認識のノードが見つけたピースの位置と向きからつかみます。認識のノードは、見つけたピースごとに **tf のフレーム** を出します（お手本の `color_detection` が `target_0` を出すのと同じやり方）。
+
+| 決まり | 内容 |
+|---|---|
+| フレーム名 | `piece_<種類>_<番号>`。例：`piece_I_0`、`piece_S_0`、`piece_L_0`、`piece_L_1`。同じ種類は 0, 1, … と番号を振る |
+| 親のフレーム | `base_link`（`camera_color_optical_frame` などから出してもよい。tf2 が `base_link` に直す） |
+| 位置 | **取っ手の中心**（ピースの重心の真上）。高さ（z）は使わない |
+| 向き | ピースの yaw（上から見て反時計回り、[docs/interfaces.md](interfaces.md)）。基準の向き（ソルバーの形）で 0。L は左右非対称なので 360° 区別する。I・S は 180° 違ってもよい |
+| 時刻 | 撮った画像の時刻にする。`tf_max_age_sec`（5 秒）より古い tf は使わない |
+
+どのピースをどこに置くかは、種類で決めます（L は `piece_L_0` から順に使う）。必要な種類がそろわないときは、何も運ばずに止まり、足りないものを表示します。
+
+**認識のノードがなくても試せます**（偽物の tf を、上の置き場と同じ位置に出す）：
+
+```bash
+ros2 launch tukamukai fake_pieces.launch.py
+# 別のターミナルで
+ros2 launch tukamukai pick_place.launch.py mode:=fill_4x4 piece_source:=tf step_by_step:=true speed_scale:=0.3
+```
+
+偽物の位置と向きは `L_1_yaw_deg:=90.0` のように変えられます（`I_0` `S_0` `L_0` `L_1` ごとに `_x` `_y` `_yaw_deg`）。
+
+| 引数 | 初期値 | 内容 |
+|---|---|---|
+| `piece_source` | tray | `tray`＝決め打ちの置き場、`tf`＝認識のノードの tf |
+| `tf_wait_sec` | 5.0 | ピースがそろうまで待つ時間 [s] |
+| `tf_max_age_sec` | 5.0 | これより古い tf は使わない [s] |
+
 ## 5. 終了する
 
 1. **アームを手で支える**

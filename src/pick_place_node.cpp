@@ -37,9 +37,13 @@
 #include "moveit/move_group_interface/move_group_interface.hpp"
 #include "moveit/robot_state/robot_state.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "tf2/utils.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "tf2_ros/buffer.hpp"
+#include "tf2_ros/transform_listener.hpp"
 #include "tukamukai/board_geometry.hpp"
 #include "tukamukai/grasp_yaw.hpp"
+#include "tukamukai/piece_assignment.hpp"
 #include "tukamukai/solver.hpp"
 
 using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
@@ -1040,27 +1044,94 @@ bool run_pick_move(
 // ソルバーの答えから置く位置・向きを計算する（board_geometry）。
 // 途中で届かないと分かるとピースを持ったまま止まるので、動き出す前に全部のピースの手の向きを
 // 確かめる。手首が 1 回も回らない組み合わせなら、動かさずに false を返す
+// つかむ位置：取っ手の位置 [m] とピースの向き [deg]（上から見て反時計回り）
+struct PickSpot
+{
+  double x, y, piece_deg;
+  std::string from;  // ログ用（"tray 1"、"piece_L_0" など）
+};
+
+// 決め打ちの置き場：答えの i 番目のピースは、置き場の i 番目（2 列に並べる）で待っている
+std::vector<PickSpot> tray_spots(
+  const size_t count, const double tray_x, const double tray_y, const double tray_dx,
+  const double tray_dy, const double tray_piece_deg)
+{
+  std::vector<PickSpot> spots;
+  for (size_t i = 0; i < count; ++i) {
+    spots.push_back(
+      {tray_x + static_cast<double>(i % 2) * tray_dx,
+        tray_y + static_cast<double>(i / 2) * tray_dy, tray_piece_deg,
+        "tray " + std::to_string(i + 1)});
+  }
+  return spots;
+}
+
+// 認識のノードが出す tf "piece_<種類>_<番号>"（base_link から見た取っ手の位置と向き）を読み、
+// 答えの各ピースに割り当てる。必要なピースがそろうまで wait_sec 秒待ち、そろわなければ空を返す。
+// 動いている途中の画像で作った古い結果を使わないよう、max_age_sec 秒より古い tf は使わない
+// （static_transform_publisher のように時刻 0 で出している tf は、古さを見ない）
+std::optional<std::vector<PickSpot>> tf_spots(
+  const rclcpp::Node::SharedPtr & node, const tf2_ros::Buffer & buffer,
+  const std::vector<tukamukai::Placement> & solution, const std::string & base_frame,
+  const double wait_sec, const double max_age_sec, const rclcpp::Logger & logger)
+{
+  const auto deadline = node->now() + rclcpp::Duration::from_seconds(wait_sec);
+  std::string error;
+  for (;; ) {
+    std::vector<tukamukai::DetectedPiece> detected;
+    for (const auto & name : buffer.getAllFrameNames()) {
+      const auto kind = tukamukai::kind_from_frame(name);
+      if (!kind) {continue;}
+      geometry_msgs::msg::TransformStamped t;
+      try {
+        t = buffer.lookupTransform(base_frame, name, tf2::TimePointZero);
+      } catch (const tf2::TransformException &) {
+        continue;
+      }
+      const rclcpp::Time stamp(t.header.stamp, RCL_ROS_TIME);
+      if (stamp.nanoseconds() != 0 && (node->now() - stamp).seconds() > max_age_sec) {
+        continue;
+      }
+      detected.push_back(
+        {*kind, t.transform.translation.x, t.transform.translation.y,
+          tf2::getYaw(t.transform.rotation), name});
+    }
+    const auto order = tukamukai::assign_pieces(solution, detected, error);
+    if (order) {
+      std::vector<PickSpot> spots;
+      for (const size_t i : *order) {
+        const auto & d = detected[i];
+        spots.push_back({d.x, d.y, angles::to_degrees(d.yaw), d.frame});
+      }
+      return spots;
+    }
+    if (node->now() > deadline) {
+      RCLCPP_ERROR(
+        logger, "[fill] pieces not found in tf within %.1f s (%s). Is the recognizer running?",
+        wait_sec, error.c_str());
+      return std::nullopt;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+}
+
+// solution の i 番目のピースを、spots[i] からつかんで置く。
+// require_turn：手首が 1 回も回らないなら動かさない（決め打ちの置き場で、デモで回転を見せるため）
 bool run_fill_4x4(
   PickAndPlace & robot, const rclcpp::Logger & logger, const tukamukai::CaseFrame & frame,
-  const double tray_x, const double tray_y, const double tray_dx, const double tray_dy,
-  const double tray_piece_deg, const MotionConfig & c)
+  const std::vector<tukamukai::Placement> & solution, const std::vector<PickSpot> & spots,
+  const bool require_turn, const MotionConfig & c)
 {
-  const auto solution = tukamukai::solve(4, 4, {{'I', 1}, {'S', 1}, {'L', 2}});
-  if (!solution) {
-    RCLCPP_ERROR(logger, "[fill] no solution for 4x4 with I, S, L, L");
-    return false;
-  }
-  RCLCPP_INFO(logger, "[fill] solution:\n%s", tukamukai::render(4, 4, *solution).c_str());
+  RCLCPP_INFO(logger, "[fill] solution:\n%s", tukamukai::render(4, 4, solution).c_str());
 
   std::vector<PieceMove> moves;
   std::vector<tukamukai::GraspYaw> yaws;
   int turns = 0;
-  for (size_t i = 0; i < solution->size(); ++i) {
-    const auto & p = (*solution)[i];
+  for (size_t i = 0; i < solution.size(); ++i) {
+    const auto & p = solution[i];
     const auto target = tukamukai::placement_in_robot(p, frame);
     const PieceMove m{
-      p.kind, tray_x + static_cast<double>(i % 2) * tray_dx,
-      tray_y + static_cast<double>(i / 2) * tray_dy, tray_piece_deg,
+      p.kind, spots[i].x, spots[i].y, spots[i].piece_deg,
       target.x, target.y, angles::to_degrees(target.yaw)};
     tukamukai::GraspYaw yaw{};
     if (!choose_yaw_for(robot, logger, m, c, yaw)) {
@@ -1069,13 +1140,13 @@ bool run_fill_4x4(
     }
     if (std::abs(yaw.wrist_turn) >= 0.5) {++turns;}
     RCLCPP_INFO(
-      logger, "[fill] %zu: %c  waiting at (%.3f, %.3f) yaw %.0f  ->  place (%.3f, %.3f) yaw %.0f "
-      "(wrist turn %.0f)", i + 1, p.kind, m.pick_x, m.pick_y, m.pick_piece_deg, m.place_x,
-      m.place_y, m.place_piece_deg, yaw.wrist_turn);
+      logger, "[fill] %zu: %c  %s at (%.3f, %.3f) yaw %.0f  ->  place (%.3f, %.3f) yaw %.0f "
+      "(wrist turn %.0f)", i + 1, p.kind, spots[i].from.c_str(), m.pick_x, m.pick_y,
+      m.pick_piece_deg, m.place_x, m.place_y, m.place_piece_deg, yaw.wrist_turn);
     moves.push_back(m);
     yaws.push_back(yaw);
   }
-  if (turns == 0) {
+  if (turns == 0 && require_turn) {
     RCLCPP_ERROR(logger, "[fill] the wrist never turns. Change tray_piece_deg. Nothing moved.");
     return false;
   }
@@ -1276,6 +1347,13 @@ int main(int argc, char ** argv)
   const double tray_dx = node->get_parameter_or<double>("tray_dx", 0.08);
   const double tray_dy = node->get_parameter_or<double>("tray_dy", 0.09);
   const double tray_piece_deg = node->get_parameter_or<double>("tray_piece_deg", 0.0);
+  // fill_4x4：ピースの位置をどこから得るか。tray = 決め打ちの置き場、tf = 認識のノードが出す tf
+  const std::string piece_source = node->get_parameter_or<std::string>("piece_source", "tray");
+  const double tf_wait_sec = node->get_parameter_or<double>("tf_wait_sec", 5.0);
+  const double tf_max_age_sec = node->get_parameter_or<double>("tf_max_age_sec", 5.0);
+  // tf を受け取り始めるのは時間がかかるので、最初に作っておく
+  const auto tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  const auto tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, node, false);
   const double fill_lift_dz = node->get_parameter_or<double>("fill_lift_dz", 0.08);
   // 置いて離すときの指の角度。4×4 ではとなりの取っ手まで約 25 mm しかないので、大きく開かない
   // （20° だと片側約 24 mm 開き、当たる。5° なら片側約 6 mm）
@@ -1414,8 +1492,20 @@ int main(int argc, char ** argv)
   } else if (mode == "fill_4x4") {
     const tukamukai::CaseFrame frame{
       case_x, case_y, 0.0, angles::from_degrees(case_yaw_deg), tukamukai::kDefaultCellSize};
-    ok = run_fill_4x4(
-      controller, logger, frame, tray_x, tray_y, tray_dx, tray_dy, tray_piece_deg, motion);
+    const auto solution = tukamukai::solve(4, 4, {{'I', 1}, {'S', 1}, {'L', 2}});
+    std::optional<std::vector<PickSpot>> spots;
+    if (!solution) {
+      RCLCPP_ERROR(logger, "[fill] no solution for 4x4 with I, S, L, L");
+    } else if (piece_source == "tray") {
+      spots = tray_spots(solution->size(), tray_x, tray_y, tray_dx, tray_dy, tray_piece_deg);
+    } else if (piece_source == "tf") {
+      spots = tf_spots(
+        node, *tf_buffer, *solution, "base_link", tf_wait_sec, tf_max_age_sec, logger);
+    } else {
+      RCLCPP_ERROR(logger, "[fill] unknown piece_source: %s (tray / tf)", piece_source.c_str());
+    }
+    ok = spots.has_value() &&
+      run_fill_4x4(controller, logger, frame, *solution, *spots, piece_source == "tray", motion);
     keep_gripper = true;
   } else if (keep_start) {
     ok = run_lift_place(controller, logger, lift_dz, lift_speed, gripper_open_deg);
