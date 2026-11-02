@@ -62,6 +62,9 @@ install(TARGETS solver_demo solver_viz pick_place_node
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/
   DESTINATION include)
+# Python のノード（ros2 run tukamukai piece_tf_node.py）
+install(PROGRAMS src/piece_tf_node.py
+  DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME})
 

@@ -176,6 +176,37 @@ ros2 launch tukamukai pick_place.launch.py mode:=fill_4x4 piece_source:=tf step_
 | `tf_wait_sec` | 5.0 | ピースがそろうまで待つ時間 [s] |
 | `tf_max_age_sec` | 5.0 | これより古い tf は使わない [s] |
 
+認識のノードは 1 枚の画像のピースを **同じ時刻** で出します。画像ごとに `piece_L_0` と `piece_L_1` の番号が入れ替わることがあるので、`fill_4x4` は同じ時刻の tf だけをまとめて使います（違う画像の tf を混ぜると、2 つが同じピースを指すおそれがある）。
+
+#### 認識のノード `piece_tf_node.py`
+
+色でピースを見つけ、上の決まりで tf を出すノードです。色の範囲と切り出し方は堀さんの `perception/scripts/colorecog` と同じ（オレンジ＝L、緑＝S、青＝I）、角度は [piece_angle.md](piece_angle.md) と同じ方法です。
+
+```bash
+# ターミナル1：実機とカメラ（use_d435:=true が必要。カメラの位置の tf が出る）
+ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0 use_d435:=true
+# ターミナル2：認識のノード
+ros2 run tukamukai piece_tf_node.py
+# ターミナル3：見つけたピースと角度を描いた画像を見る
+ros2 run rqt_image_view rqt_image_view /piece_tf_node/image
+# ターミナル4：アームを撮影姿勢にして止めてから、敷き詰める
+ros2 launch tukamukai pick_place.launch.py mode:=fill_4x4 piece_source:=tf step_by_step:=true speed_scale:=0.3
+```
+
+- 位置は、取っ手を通るカメラの視線と、ピースの上面の高さ（`plane_z`、初期値 0.005 m）の平面との交点です（深度は使わない）
+- **カメラが動いている間（0.3 秒前から 2 mm または 1° 以上動いた画像）は tf を出しません。** 画像の左上に `camera moving` と出ます
+- 画像の端に触れているピースや、形がよく重ならない（0.8 未満）ピースは出しません
+
+| 引数（`--ros-args -p 名前:=値`） | 初期値 | 内容 |
+|---|---|---|
+| `image_topic` | /camera/color/image_raw | カラー画像（カメラ単体で起動したときは /camera/camera/color/image_raw） |
+| `camera_info_topic` | /camera/color/camera_info | カメラの情報 |
+| `plane_z` | 0.005 | ピースの上面の高さ [m]（base_link から） |
+| `min_score` | 0.8 | 形の重なりがこれより小さいピースは出さない |
+| `still_window_sec` `still_tolerance_m` `still_tolerance_deg` | 0.3, 0.002, 1.0 | 止まっているとみなす条件 |
+
+**確かめたこと（Mock）**：録画（2026-10-26）を流し、仮のカメラの位置（前 25 cm・高さ 35 cm から真下）と D435 の標準的なカメラの情報を与えて、`fill_4x4`（`piece_source:=tf`）で 4 ピースとも最後まで通った。実機ではまだ試していない。
+
 ## 5. 終了する
 
 1. **アームを手で支える**
