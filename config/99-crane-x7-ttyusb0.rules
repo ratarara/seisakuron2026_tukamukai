@@ -1,0 +1,4 @@
+# CRANE-X7 の USB 変換器（FT232H）を、番号が変わっても /dev/ttyUSB0 で開けるようにする。
+# 番号が ttyUSB1 などになったときは、/dev/ttyUSB0 をそこへのリンクにする。
+# USB 変換器を 2 つ以上つなぐときは使わない
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", SYMLINK+="ttyUSB0"
