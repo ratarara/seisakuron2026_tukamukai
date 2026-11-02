@@ -3,8 +3,9 @@
 //
 // - ピースの向き：ピースの基準の向き（ソルバーの形）からの回転角
 // - 手の向き：手を真下に向けたときの、手首の付け根（crane_x7_gripper_base_link）の yaw
-// - 指は手の x 軸の向きに閉じ、ピースの x 軸の向きに閉じてつかむ（docs/interfaces.md）ので、
-//   手の向き = ピースの向き + hand_offset で、hand_offset の初期値は 0°
+// - 手の向き = ピースの向き + hand_offset。hand_offset の初期値は -90°。実機では、取っ手の
+//   長い辺が左右のピース（向き 0°）を、手の向き -90° で爪を前後に並べて正しくつかめた。
+//   手の向き 180° では爪が取っ手の細い面に当たり、ピースが落ちた（2026-11-02）
 // - 取っ手は 180° 回しても同じ形で、左右両方の指が動くので取っ手は指の中央に来る。
 //   そのため、つかむ手の向きは 2 通りある
 // - I・S・Z は 180°、O は 90° 回しても同じ形なので、置く手の向きも複数ある。T・J・L は 1 通り
@@ -24,7 +25,7 @@
 namespace tukamukai
 {
 
-inline constexpr double kDefaultHandOffsetDeg = 0.0;  // 手の向き - ピースの向き
+inline constexpr double kDefaultHandOffsetDeg = -90.0;  // 手の向き - ピースの向き
 inline constexpr double kPreferredHandDeg = -90.0;      // 届くことが分かっている手の向き
 
 // つかむ・置くときの手の向き [deg]
