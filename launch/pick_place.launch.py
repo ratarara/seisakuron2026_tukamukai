@@ -17,7 +17,7 @@ NODE_ARGS = {
     'mode': (
         'single', str,
         'home | single | corners | rotations | gripper | gripper_sweep | gripper_cycle | '
-        'hand_down | lower | lift_place | pick_move | fingertip_zero | fill_4x4',
+        'hand_down | lower | lift_place | pick_move | fingertip_zero | fill_4x4 | observe',
     ),
     'speed_scale': ('1.0', float, 'speed scale 0.0-1.0 (use 0.1-0.3 on the real robot)'),
     'step_by_step': ('false', bool, 'true: confirm each motion with Enter (opens xterm)'),
@@ -32,7 +32,7 @@ NODE_ARGS = {
     'place_z': ('0.13', float, 'hand height [m] when placing'),
     'pick_x': ('0.25', float, 'single / pick_move mode: hand x [m] when picking'),
     'pick_y': ('0.0', float, 'single / pick_move mode: hand y [m] when picking'),
-    'pick_z': ('0.108', float, 'single / pick_move mode: hand height [m] when picking'),
+    'pick_z': ('0.110', float, 'single / pick_move mode: hand height [m] when picking'),
     'pick_yaw': ('-90.0', float, 'single / pick_move mode: hand yaw [deg] when picking'),
     'lift_z': ('0.3', float, 'hand height [m] when moving above the pieces'),
     'gripper_open_deg': ('10.0', float, 'gripper angle [deg] when open (0 = closed)'),

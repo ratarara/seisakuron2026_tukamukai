@@ -211,6 +211,18 @@ public:
     return move_gripper_angle_now(angle);
   }
 
+  // 腕を、指定した関節の角度 [deg] へ動かす
+  bool move_arm_joints(const std::map<std::string, double> & joints_deg, const std::string & what)
+  {
+    if (!confirm_step(what)) {return false;}
+    std::map<std::string, double> joints;
+    for (const auto & [name, deg] : joints_deg) {
+      joints[name] = angles::from_degrees(deg);
+    }
+    move_group_arm_->setJointValueTarget(joints);
+    return static_cast<bool>(move_group_arm_->move());
+  }
+
   // 今のグリッパの角度 [rad]（実際の指の角度。命令した角度とはずれることがある）
   // （角度を読めなかったときは NaN）
   double current_gripper_angle()
@@ -1066,6 +1078,10 @@ bool pick_and_place_piece(
       RCLCPP_INFO(
         logger, "[pick_move] grip: command %.1f, actual %.1f [deg], gap about %.1f [mm]",
         c.grasp_deg, actual, 2.0 * 77.4 * std::sin(angles::from_degrees(actual)));
+      // 指令の近くまで閉じたなら、指の間に何もない。挟めていれば、取っ手の手前で止まる
+      if (actual < 0.0) {
+        RCLCPP_WARN(logger, "[pick_move] grip: the fingers closed past 0 deg. Nothing is held?");
+      }
       return true;
     };
   const auto compensated = [&](const HandPose & to, Offset & offset, const char * what) {
@@ -1481,7 +1497,7 @@ int main(int argc, char ** argv)
   const HandPose PICK{
     node->get_parameter_or<double>("pick_x", 0.25),
     node->get_parameter_or<double>("pick_y", 0.0),
-    node->get_parameter_or<double>("pick_z", 0.108),
+    node->get_parameter_or<double>("pick_z", 0.110),
     -180.0, 0.0,
     node->get_parameter_or<double>("pick_yaw", -90.0)};
 
@@ -1558,6 +1574,18 @@ int main(int argc, char ** argv)
     ok = run_fingertip_zero(
       controller, logger, tip_x, tip_y, tip_z, finger_length, tip_speed, comp, planar_tol_deg);
     keep_pose = true;     // 定規で測れるよう、その位置のままにする
+    keep_gripper = true;
+  } else if (mode == "observe") {
+    // 撮影姿勢。値は config/observation_pose.yaml と同じ（カメラが真下を向き、置き場とケースが写る）
+    ok = controller.move_arm_joints(
+      {{"crane_x7_shoulder_fixed_part_pan_joint", 19.0},
+        {"crane_x7_shoulder_revolute_part_tilt_joint", -15.6},
+        {"crane_x7_upper_arm_revolute_part_twist_joint", 7.5},
+        {"crane_x7_upper_arm_revolute_part_rotate_joint", -83.0},
+        {"crane_x7_lower_arm_fixed_part_joint", -2.0},
+        {"crane_x7_lower_arm_revolute_part_joint", -81.5},
+        {"crane_x7_wrist_joint", -63.5}}, "Move arm to the observation pose");
+    keep_pose = true;     // このまま認識する
     keep_gripper = true;
   } else if (mode == "pick_move") {
     MotionConfig c = motion;

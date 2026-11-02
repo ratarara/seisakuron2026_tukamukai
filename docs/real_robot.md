@@ -139,7 +139,7 @@ I:  I I I I     S:  . S S     L:  L L L
 | `case_x` `case_y` `case_yaw_deg` | 0.22, -0.04, 0 | ケースの角の位置と向き |
 | `tray_x` `tray_y` `tray_dx` `tray_dy` | 0.20, 0.12, 0.08, 0.09 | 置き場の先頭の位置と間隔 |
 | `tray_piece_deg` | 0 | 置き場のピースの向き |
-| `pick_z` | 0.108 | つかむ高さ（手首の付け根）[m] |
+| `pick_z` | 0.110 | つかむ高さ（手首の付け根）[m] |
 | `fill_release_dz` | 0.003 | つかむ高さよりこれだけ上で離す [m] |
 | `fill_place_open_deg` | 5 | 離すときの指の角度。20° だととなりの取っ手に当たる計算 |
 | `fill_lift_dz` | 0.08 | 持ち上げる高さ [m] |
@@ -248,6 +248,37 @@ xterm をクリックして、Enter で 1 動作ずつ進めます（`q` のあ�
 ログの `[pick_move] grip: command ... actual ...` が、つかんだあとの指の角度です。持ち上げてピースが落ちるときは、`pick_grasp_deg:=-4` を足すと強く挟めます（-5 より小さくしない。挟んだまま長く止めない）。
 
 **確かめていないこと**：この手順は 2026-11-02 時点のもので、`/dev/serial/by-id/` での起動と `pick_grasp_deg:=-4` は、実機でまだ試していません。`Failed to connect a robot.` と出たら、`ls /dev/ttyUSB*` で出た番号を `port_name` に指定してください。
+
+#### 中間発表のデモ（1 つのコマンドで）
+
+認識のノード・確認用の画像・`fill_4x4`（`piece_source:=tf`）を、`demo_4x4.launch.py` でまとめて起動できます。
+
+```bash
+# ターミナル1：実機とカメラ
+ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0 use_d435:=true
+# 撮影姿勢へ動かす（Enter で進める。腕が止まったら xterm を閉じる）
+ros2 launch tukamukai pick_place.launch.py mode:=observe step_by_step:=true speed_scale:=0.3
+# ターミナル2：デモ
+ros2 launch tukamukai demo_4x4.launch.py
+```
+
+1. 認識のノードが起動し、撮影姿勢で止まっている間に tf を出す（確認用の画像も開く）
+2. `start_delay_sec`（5 秒）待ってから `fill_4x4` が始まる。始めにホーム姿勢へ動き、そのあと撮影姿勢で取った tf のピースを順につかんで置く
+3. 置き終わっても認識のノードは動き続けるので、`Ctrl + C` で止める
+
+ピースは動かないので、撮影姿勢で出した tf を使えるよう、tf の古さの基準（`tf_max_age_sec`）は 60 秒にしています。**ホーム姿勢に動いたあと 60 秒以上たつと、ピースがそろわずに止まります。** 1 回置き終わったら、撮影姿勢にし直してから起動してください。
+
+| 引数 | 初期値 | 内容 |
+|---|---|---|
+| `step_by_step` | true | 1 動作ずつ Enter で確かめる（xterm が開く）。慣れるまで true のまま |
+| `speed_scale` | 0.3 | 速さ |
+| `view` | true | 確認用の画像を出す |
+| `start_delay_sec` | 5.0 | `fill_4x4` を始めるまで待つ時間 [s] |
+| `tf_wait_sec` `tf_max_age_sec` | 10.0, 60.0 | ピースがそろうまで待つ時間、使う tf の古さの上限 [s] |
+| `plane_z` | 0.005 | ピースの上面の高さ [m] |
+| `case_x` `case_y` `case_yaw_deg` | 0.22, -0.04, 0 | ケースの角の位置と向き |
+
+**確かめたこと（Mock）**：上と同じ録画と仮のカメラで、`step_by_step:=false` で起動し、4 ピースとも最後まで通った。
 
 ## 5. 終了する
 
