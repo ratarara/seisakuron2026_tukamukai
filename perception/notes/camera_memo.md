@@ -21,6 +21,66 @@ ros2 topic list
 (深度画像)
 
 
+
+## RealSenseカメラの録画
+あらかじめ動画を撮っておくと、RealSenseが手元にない状況でも自作のコードを試すことができます。録画方法、及び再生方法は以下のとおりです。  
+
+### 録画方法
+まず、上記のカメラの起動方法の通りにカメラを起動させてください。  
+
+次に新しくターミナルを開いて以下のコマンドを順に行ってください。  
+```
+source /opt/ros/jazzy/setup.bash
+
+mkdir -p ~/realsense_bags
+cd ~/realsense_bags
+
+ros2 bag record -o d435_recording   --topics   /camera/camera/color/image_raw   /camera/camera/depth/image_rect_raw
+```
+`[INFO] [rosbag2_recorder]: Recording...`と表示されれば録画できています。  
+
+録画はCtrl+cで終了させることができます。  
+録画したデータは~/realsense_bags/d435_recording/に保存されています。以下のように録画されているか確認してください。  
+```
+cd ~/realsense_bags
+ros2 bag info d435_recording
+```
+トピックの中にカラー画像と深度画像が表示されていれば成功です。  
+
+### 再生方法
+以下のコマンドを順に行ってください。  
+```
+source /opt/ros/jazzy/setup.bash
+cd ~/realsense_bags
+ros2 bag play ~/realsense_bags/d435_recording --loop
+```
+録画した動画が繰り返し再生されるようになります。  
+次に、別のターミナルで以下を実行してください。  
+```
+source /opt/ros/jazzy/setup.bash
+source ~/realsense_ws/install/setup.bash
+ros2 run realsense_image_viewer image_listener
+```
+
+### 録画データの共有方法
+録画データを共有する場合、非常に大きいサイズとなっている可能性があるのでgoogle driveでのリンク共有をおすすめします。  
+
+録画データがきちんと残っているか`ls -lh ~/realsense_bags/d435_recording`で確認してから以下の手順に沿ってzipファイルを作成ください。  
+```
+sudo apt update
+sudo apt install zip
+
+cd ~/realsense_bags
+zip -r d435_recording.zip d435_recording
+```
+zipファイルの作成には時間がかかることがあります。  
+作成できたら、`ls -lh ~/realsense_bags/d435_recording.zip`で確認してください。  
+
+google driveを開いたら、d435_recording.zipの名前で保存されているファイルをアップロードし、共有設定を変更してください。その後、共有リンクを共有してください。  
+  
+なお、zip形式にしてもサイズが小さくなるとは限りません。  
+
+  
   
 ## 異なる色を認識したいとき
 
