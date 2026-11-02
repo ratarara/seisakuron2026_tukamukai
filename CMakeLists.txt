@@ -68,7 +68,15 @@ if(BUILD_TESTING)
   # 著作権表示と cpplint の著作権チェックは、LICENSE が決まるまでスキップする
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
+  # perception/ は認識の試作の置き場なので、書き方のチェックの対象から外す（perception/README.md）
+  # （uncrustify はファイルのパターンで指定する必要があるので、深さごとに並べる）
+  set(AMENT_LINT_AUTO_FILE_EXCLUDE
+    perception perception/* perception/*/* perception/*/*/* perception/*/*/*/*)
+  # pep257 は除外の設定が効かないので自動では動かさず、launch/ と test/ だけを調べる
+  list(APPEND AMENT_LINT_AUTO_EXCLUDE ament_cmake_pep257)
   ament_lint_auto_find_test_dependencies()
+  find_package(ament_cmake_pep257 REQUIRED)
+  ament_pep257(launch test)
 
   ament_add_gtest(test_solver test/test_solver.cpp)
   target_link_libraries(test_solver tukamukai_solver)

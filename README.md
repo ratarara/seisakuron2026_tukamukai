@@ -160,6 +160,11 @@ seisakuron2026_tukamukai/
 │   └── test_board_geometry.cpp  # 座標の変換のテスト
 ├── docs/
 │   └── ros2_setup.md      # ROS 2 環境構築の手順
+├── perception/            # 認識（RealSense・OpenCV）の試作の置き場（堀さん）
+│   ├── README.md          # 置き方と、本番のノードへの移し方
+│   ├── scripts/           # 試作のコード
+│   ├── samples/           # テスト用の写真など（小さいもの）
+│   └── notes/             # 試した結果のメモ
 └── hardware/              # ハードのデータ（CAD・STL・設計値）
     ├── README.md          # 置き方とブラウザからの上げ方
     ├── dimensions.md      # 設計値の一覧
@@ -206,6 +211,7 @@ seisakuron2026_tukamukai/
 
 | ファイル | 役割 | 詳細・いつ触るか |
 |---|---|---|
+| `perception/` | 認識の試作の置き場 | 堀さんが RealSense・OpenCV で試したコード・写真・メモを、途中のものも含めて置く。テストの書き方チェックの対象外。完成したら `src/` のノードにする（[perception/README.md](perception/README.md)） |
 | `hardware/README.md` | ハードのデータの置き方 | フォルダの分け方、ファイル名の付け方、ブラウザから上げる手順 |
 | `hardware/dimensions.md` | 設計値の一覧 | マスの大きさ・取っ手の寸法・色など。**ソフトの担当はここの値を使う**ので、値を変えたら知らせる |
 | `hardware/handle/` など | 部品ごとのデータ | CAD の元データ、STEP、STL を部品ごとに置く |
