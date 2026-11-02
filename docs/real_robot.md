@@ -207,6 +207,36 @@ ros2 launch tukamukai pick_place.launch.py mode:=fill_4x4 piece_source:=tf step_
 
 **確かめたこと（Mock）**：録画（2026-10-26）を流し、仮のカメラの位置（前 25 cm・高さ 35 cm から真下）と D435 の標準的なカメラの情報を与えて、`fill_4x4`（`piece_source:=tf`）で 4 ピースとも最後まで通った。実機ではまだ試していない。
 
+#### 中間発表のデモ（1 つのコマンドで）
+
+認識のノード・確認用の画像・`fill_4x4`（`piece_source:=tf`）を、`demo_4x4.launch.py` でまとめて起動できます。
+
+```bash
+# ターミナル1：実機とカメラ
+ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0 use_d435:=true
+# RViz でアームを撮影姿勢（カメラが机のピースを真上から見る姿勢）にして止める
+# ターミナル2：デモ
+ros2 launch tukamukai demo_4x4.launch.py
+```
+
+1. 認識のノードが起動し、撮影姿勢で止まっている間に tf を出す（確認用の画像も開く）
+2. `start_delay_sec`（5 秒）待ってから `fill_4x4` が始まる。始めにホーム姿勢へ動き、そのあと撮影姿勢で取った tf のピースを順につかんで置く
+3. 置き終わっても認識のノードは動き続けるので、`Ctrl + C` で止める
+
+ピースは動かないので、撮影姿勢で出した tf を使えるよう、tf の古さの基準（`tf_max_age_sec`）は 60 秒にしています。**ホーム姿勢に動いたあと 60 秒以上たつと、ピースがそろわずに止まります。** 1 回置き終わったら、撮影姿勢にし直してから起動してください。
+
+| 引数 | 初期値 | 内容 |
+|---|---|---|
+| `step_by_step` | true | 1 動作ずつ Enter で確かめる（xterm が開く）。慣れるまで true のまま |
+| `speed_scale` | 0.3 | 速さ |
+| `view` | true | 確認用の画像を出す |
+| `start_delay_sec` | 5.0 | `fill_4x4` を始めるまで待つ時間 [s] |
+| `tf_wait_sec` `tf_max_age_sec` | 10.0, 60.0 | ピースがそろうまで待つ時間、使う tf の古さの上限 [s] |
+| `plane_z` | 0.005 | ピースの上面の高さ [m] |
+| `case_x` `case_y` `case_yaw_deg` | 0.22, -0.04, 0 | ケースの角の位置と向き |
+
+**確かめたこと（Mock）**：上と同じ録画と仮のカメラで、`step_by_step:=false` で起動し、4 ピースとも最後まで通った。
+
 ## 5. 終了する
 
 1. **アームを手で支える**
