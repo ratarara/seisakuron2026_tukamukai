@@ -198,6 +198,8 @@ ls /dev/ttyUSB*
 ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB1
 ```
 
+**実例（2026-11-02）**：`port_name:=/dev/ttyUSB0` で起動すると `Failed to connect a robot.` と出て、腕が動かなかった。電源の不具合のように見えるが、`/dev/ttyUSB0` がなくなり、`/dev/ttyUSB1` に変わっていた。`/dev/ttyUSB1` を指定すると起動でき、約 3 分（178 秒）動かさずに置いても通信エラーは 0 回だった。起動できないときは、電源を疑う前に番号を確かめる。
+
 ### `Failed to connect a robot.` と出て、アームに力が入らない
 
 **症状**：`demo.launch.py` は起動するが、アームに力が入らない。ログに `Failed to connect a robot.` と出ている。
