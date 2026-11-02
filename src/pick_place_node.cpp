@@ -25,6 +25,7 @@
 #include <cstdio>
 #include <future>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1069,7 +1070,10 @@ std::vector<PickSpot> tray_spots(
 // 認識のノードが出す tf "piece_<種類>_<番号>"（base_link から見た取っ手の位置と向き）を読み、
 // 答えの各ピースに割り当てる。必要なピースがそろうまで wait_sec 秒待ち、そろわなければ空を返す。
 // 動いている途中の画像で作った古い結果を使わないよう、max_age_sec 秒より古い tf は使わない
-// （static_transform_publisher のように時刻 0 で出している tf は、古さを見ない）
+// （static_transform_publisher のように時刻 0 で出している tf は、古さを見ない）。
+// 認識のノードは 1 枚の画像のピースを同じ時刻で出す。画像ごとに番号（piece_L_0 と piece_L_1）が
+// 入れ替わることがあるので、違う画像の tf を混ぜると 2 つが同じピースを指すおそれがある。
+// そのため、同じ時刻の tf だけをまとめて使う（新しい時刻から順に、そろうものを探す）
 std::optional<std::vector<PickSpot>> tf_spots(
   const rclcpp::Node::SharedPtr & node, const tf2_ros::Buffer & buffer,
   const std::vector<tukamukai::Placement> & solution, const std::string & base_frame,
@@ -1078,7 +1082,7 @@ std::optional<std::vector<PickSpot>> tf_spots(
   const auto deadline = node->now() + rclcpp::Duration::from_seconds(wait_sec);
   std::string error;
   for (;; ) {
-    std::vector<tukamukai::DetectedPiece> detected;
+    std::map<int64_t, std::vector<tukamukai::DetectedPiece>> by_stamp;
     for (const auto & name : buffer.getAllFrameNames()) {
       const auto kind = tukamukai::kind_from_frame(name);
       if (!kind) {continue;}
@@ -1092,12 +1096,17 @@ std::optional<std::vector<PickSpot>> tf_spots(
       if (stamp.nanoseconds() != 0 && (node->now() - stamp).seconds() > max_age_sec) {
         continue;
       }
-      detected.push_back(
+      by_stamp[stamp.nanoseconds()].push_back(
         {*kind, t.transform.translation.x, t.transform.translation.y,
           tf2::getYaw(t.transform.rotation), name});
     }
-    const auto order = tukamukai::assign_pieces(solution, detected, error);
-    if (order) {
+    if (by_stamp.empty()) {
+      tukamukai::assign_pieces(solution, {}, error);  // 足りないものを error に書くため
+    }
+    for (auto it = by_stamp.rbegin(); it != by_stamp.rend(); ++it) {
+      const auto & detected = it->second;
+      const auto order = tukamukai::assign_pieces(solution, detected, error);
+      if (!order) {continue;}
       std::vector<PickSpot> spots;
       for (const size_t i : *order) {
         const auto & d = detected[i];
