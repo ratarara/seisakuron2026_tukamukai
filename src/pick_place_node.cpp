@@ -1262,8 +1262,8 @@ int main(int argc, char ** argv)
   const double pick_grasp_deg = node->get_parameter_or<double>("pick_grasp_deg", -2.0);
   // ピースの種類と向き [deg]（ソルバー・認識と同じ、上から見て反時計回り）
   const std::string piece_kind = node->get_parameter_or<std::string>("piece_kind", "L");
-  const double pick_piece_deg = node->get_parameter_or<double>("pick_piece_deg", -90.0);
-  const double place_piece_deg = node->get_parameter_or<double>("place_piece_deg", -90.0);
+  const double pick_piece_deg = node->get_parameter_or<double>("pick_piece_deg", 0.0);
+  const double place_piece_deg = node->get_parameter_or<double>("place_piece_deg", 0.0);
   const double hand_offset_deg =
     node->get_parameter_or<double>("hand_offset_deg", tukamukai::kDefaultHandOffsetDeg);
   // fill_4x4：ケースの角（マス (0, 0) の外側の角）。根本に近いと肘の制限内で届かないので前 22 cm から
