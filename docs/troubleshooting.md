@@ -198,6 +198,22 @@ ls /dev/ttyUSB*
 ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB1
 ```
 
+### `Failed to connect a robot.` と出て、アームに力が入らない
+
+**症状**：`demo.launch.py` は起動するが、アームに力が入らない。ログに `Failed to connect a robot.` と出ている。
+
+**原因**：`port_name` に、今は存在しない USB の番号を指定している（2026-11-02：USB を差し直して `ttyUSB0` に戻ったのに、`ttyUSB1` を指定していた）。
+
+**解決方法**：`ls /dev/ttyUSB*` で番号を確かめて指定し直す。番号が変わっても動くように、`port_name:=/dev/serial/by-id/...` で指定する方法もある（[real_robot.md](real_robot.md) の「実機とカメラを起動し直す」。実機ではまだ未確認）。
+
+### `No RealSense devices were found!` が出続ける
+
+**症状**：`use_d435:=true` で起動すると、アームは動くが `/camera/color/image_raw` が出ない。ログに `No RealSense devices were found!` が 6 秒ごとに出る。
+
+**原因**：PC が RealSense を認識していない。`lsusb | grep 8086` で何も出ない。
+
+**解決方法**：USB ケーブルを両側で差し直す。変換アダプタとケーブルは USB 3.0 対応のものを使う。認識されると、起動したままでも `RealSense Node Is Up!` と出る（2026-11-02 に確認）。
+
 ### `Overrun detected!` が 1 秒ごとに出る
 
 **症状**：`demo.launch.py` 側のターミナルに、次の警告がずっと出る。アームの動きがカクついたり、通信が切れやすくなったりする。

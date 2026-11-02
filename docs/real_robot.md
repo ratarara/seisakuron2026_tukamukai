@@ -116,7 +116,7 @@ ros2 launch tukamukai pick_place.launch.py mode:=fill_4x4 step_by_step:=true spe
 
 ![fill_4x4 の配置](fill_4x4_layout.png)
 
-**ピースの置き方**：土台の中心から測って、**取っ手の中心** を次の位置に合わせます（X が前、Y が左）。
+**ピースの置き方**：X は土台の後ろの端から、Y は土台の左右の真ん中から測って、**取っ手の中心** を次の位置に合わせます（X が前、Y が左。2026-11-02 に実機で 1 か所測って分かった起点で、ほかの位置ではまだ確かめていません）。
 
 | 順番 | ピース | 置き場 X | 置き場 Y | ケースに置く位置 X, Y | 置く向き |
 |---|---|---|---|---|---|
@@ -206,6 +206,48 @@ ros2 launch tukamukai pick_place.launch.py mode:=fill_4x4 piece_source:=tf step_
 | `still_window_sec` `still_tolerance_m` `still_tolerance_deg` | 0.3, 0.002, 1.0 | 止まっているとみなす条件 |
 
 **確かめたこと（Mock）**：録画（2026-10-26）を流し、仮のカメラの位置（前 25 cm・高さ 35 cm から真下）と D435 の標準的なカメラの情報を与えて、`fill_4x4`（`piece_source:=tf`）で 4 ピースとも最後まで通った。実機ではまだ試していない。
+
+## 実機とカメラを起動し直す
+
+カメラもつなぐときの手順です。USB を差し直したり、通信が切れたりしたあとも、この順番で行います。
+
+USB の番号（`ttyUSB0`、`ttyUSB1`）は、差し直すと変わることがあります。そこで、番号ではなく **USB 変換器の名前** で指定します。名前は機体ごとに違うので、次で確かめます。
+
+```bash
+ls /dev/serial/by-id/
+```
+
+下の例の `FT3HLLRD` は、2026-11-02 に使った機体です。
+
+1. 開いている xterm を閉じる
+2. ターミナル 2 の `pick_place` が止まっていなければ `Ctrl + C`。**腕を手で支えて**、ターミナル 1 でも `Ctrl + C`
+3. 残りがないか確かめる（何も出なければ OK。出たら `kill <番号>` で止める）
+
+```bash
+pgrep -a "ros2_control|move_group|rviz2|robot_state"
+```
+
+4. 腕が倒れない形にして、ターミナル 1 で起動する
+
+```bash
+source ~/ros2_ws/install/setup.bash
+ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT3HLLRD-if00-port0 use_d435:=true timeout_seconds:=3.0
+```
+
+腕に力が入り、その場で止まれば成功です。
+
+5. ターミナル 2 で、つかんで運ぶ確認をする
+
+```bash
+source ~/ros2_ws/install/setup.bash
+ros2 launch tukamukai pick_place.launch.py mode:=pick_move step_by_step:=true speed_scale:=0.3
+```
+
+xterm をクリックして、Enter で 1 動作ずつ進めます（`q` のあと Enter で中止）。L は、取っ手の中心が X = 250 mm（土台の後ろの端から）、Y = 0 に来るように、「L」の字を時計回りに 90° 回した向きで置きます。
+
+ログの `[pick_move] grip: command ... actual ...` が、つかんだあとの指の角度です。持ち上げてピースが落ちるときは、`pick_grasp_deg:=-4` を足すと強く挟めます（-5 より小さくしない。挟んだまま長く止めない）。
+
+**確かめていないこと**：この手順は 2026-11-02 時点のもので、`/dev/serial/by-id/` での起動と `pick_grasp_deg:=-4` は、実機でまだ試していません。`Failed to connect a robot.` と出たら、`ls /dev/ttyUSB*` で出た番号を `port_name` に指定してください。
 
 ## 5. 終了する
 

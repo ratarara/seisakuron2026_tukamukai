@@ -1004,6 +1004,16 @@ bool pick_and_place_piece(
   // 合わせ、同じずらし量のまま下ろし、下でもう一度合わせる。場所ごとにずらし量を測り直す
   Offset at_pick;
   Offset at_place;
+  // つかんだあとの実際の指の角度と、爪の間の幅の目安（指令との差に比例した力で挟む）。
+  // 幅は実測（5° で 13.5 mm）から 2 × 77.4 mm × sin(角度) で計算する
+  const auto log_grip = [&]() {
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      const double actual = angles::to_degrees(robot.current_gripper_angle());
+      RCLCPP_INFO(
+        logger, "[pick_move] grip: command %.1f, actual %.1f [deg], gap about %.1f [mm]",
+        c.grasp_deg, actual, 2.0 * 77.4 * std::sin(angles::from_degrees(actual)));
+      return true;
+    };
   const auto compensated = [&](const HandPose & to, Offset & offset, const char * what) {
       return step(
         robot.move_hand_compensated(to_pose(to), c.speed, c.comp, offset, logger, what), what);
@@ -1021,6 +1031,7 @@ bool pick_and_place_piece(
     step(robot.move_gripper_angle(angles::from_degrees(c.pick_open_deg)), "open") &&
     compensated(pick, at_pick, "go down") &&
     step(robot.move_gripper_angle(angles::from_degrees(c.grasp_deg)), "grasp") &&
+    log_grip() &&
     straight(above, "lift") &&
     compensated(place_above_before_turn, at_place, "move sideways") &&
     (std::abs(yaw.wrist_turn) < 0.5 ||
@@ -1317,7 +1328,7 @@ int main(int argc, char ** argv)
   const double col = node->get_parameter_or<double>("col", 0.0);
   const double rotation = node->get_parameter_or<double>("rotation", 0.0);
   const double place_z = node->get_parameter_or<double>("place_z", 0.13);
-  const double gripper_open_deg = node->get_parameter_or<double>("gripper_open_deg", 20.0);
+  const double gripper_open_deg = node->get_parameter_or<double>("gripper_open_deg", 10.0);
   const double gripper_grasp_deg = node->get_parameter_or<double>("gripper_grasp_deg", 10.0);
   const double sweep_step_deg = node->get_parameter_or<double>("sweep_step_deg", 1.0);
   const double sweep_interval_sec = node->get_parameter_or<double>("sweep_interval_sec", 0.5);

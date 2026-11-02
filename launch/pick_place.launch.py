@@ -35,7 +35,7 @@ NODE_ARGS = {
     'pick_z': ('0.105', float, 'single / pick_move mode: hand height [m] when picking'),
     'pick_yaw': ('-90.0', float, 'single / pick_move mode: hand yaw [deg] when picking'),
     'lift_z': ('0.3', float, 'hand height [m] when moving above the pieces'),
-    'gripper_open_deg': ('20.0', float, 'gripper angle [deg] when open (0 = closed)'),
+    'gripper_open_deg': ('10.0', float, 'gripper angle [deg] when open (0 = closed)'),
     'gripper_grasp_deg': ('10.0', float, 'gripper angle [deg] when grasping the handle'),
     'sweep_step_deg': ('1.0', float, 'gripper_sweep mode: closing step [deg] per motion'),
     'sweep_interval_sec': ('0.5', float, 'gripper_sweep mode: wait [s] after each motion'),
