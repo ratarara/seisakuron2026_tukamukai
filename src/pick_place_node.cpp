@@ -34,17 +34,48 @@
 #include "angles/angles.h"
 #include "geometry_msgs/msg/pose.hpp"
 #include "moveit/move_group_interface/move_group_interface.hpp"
+#include "moveit/robot_state/robot_state.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tukamukai/board_geometry.hpp"
 
 using MoveGroupInterface = moveit::planning_interface::MoveGroupInterface;
 
+// 置く位置の補正の設定（correct_position）
+struct CompConfig
+{
+  bool enabled = true;
+  double tol = 0.001;        // これより小さいずれは補正しない [m]
+  int max_iter = 2;          // 動き直す回数の上限
+  double max_total = 0.010;  // 指令をずらす量の上限 [m]。超えたら補正しない
+  bool use_z = false;        // 高さも補正するか（つかむ高さは実機で決めた指令値なので、初期値は補正しない）
+  // 試験用：測ったずれに、横（y）にこの量を足す [m]。Mock は腕が指令どおりに止まり、
+  // ずれが 0 なので、補正の動きを確かめるときに使う。実機では 0 のままにする
+  double fake_error_y = 0.0;
+};
+
+// 指令のずらし量 [m]
+struct Offset
+{
+  double x = 0.0;
+  double y = 0.0;
+  double z = 0.0;
+};
+
 class PickAndPlace
 {
 public:
   // グリッパを閉じきったときの角度
   inline static const double GRIPPER_CLOSE = 0.0;
+
+  // 関節の名前
+  inline static const char * const kPanJoint = "crane_x7_shoulder_fixed_part_pan_joint";  // 根本の回転
+  inline static const char * const kTwistJoint =
+    "crane_x7_upper_arm_revolute_part_twist_joint";  // 上腕のねじり
+  inline static const char * const kElbowJoint =
+    "crane_x7_upper_arm_revolute_part_rotate_joint";  // 肘
+  inline static const char * const kForearmTwistJoint =
+    "crane_x7_lower_arm_fixed_part_joint";  // 前腕のねじり
 
   // ノードを受け取り、アーム・グリッパのMoveGroupInterfaceを初期化する
   explicit PickAndPlace(rclcpp::Node::SharedPtr node)
@@ -145,15 +176,36 @@ public:
   }
 
   // 今のグリッパの角度 [rad]（実際の指の角度。命令した角度とはずれることがある）
+  // （角度を読めなかったときは NaN）
   double current_gripper_angle()
   {
-    return move_group_gripper_->getCurrentJointValues()[0];
+    const auto values = move_group_gripper_->getCurrentJointValues();
+    return values.empty() ? std::nan("") : values[0];
+  }
+
+  // 関節の角度を受け取れるまで待つ（最大 timeout_sec 秒）。受け取れたら true。
+  // 起動した直後は、MoveIt がまだ関節の角度を受け取っていないことがあり、
+  // そのまま動かそうとすると、空のデータを読んでプログラムが落ちる
+  bool wait_for_robot_state(const double timeout_sec)
+  {
+    const auto start = std::chrono::steady_clock::now();
+    while (std::chrono::steady_clock::now() - start <
+      std::chrono::duration<double>(timeout_sec))
+    {
+      if (move_group_arm_->getCurrentState(1.0) &&
+        !move_group_gripper_->getCurrentJointValues().empty())
+      {
+        return true;
+      }
+    }
+    return false;
   }
 
   // グリッパを角度[rad]に動かす（ステップ実行の確認をしない）。成功したら true
   bool move_gripper_angle_now(const double angle)
   {
     auto joint_values = move_group_gripper_->getCurrentJointValues();
+    if (joint_values.empty()) {return false;}  // 今の角度を読めなかった
     joint_values[0] = angle;
     move_group_gripper_->setJointValueTarget(joint_values);
     if (!static_cast<bool>(move_group_gripper_->move())) {return false;}
@@ -236,7 +288,8 @@ public:
   bool move_hand_cartesian(
     const std::vector<geometry_msgs::msg::Pose> & waypoints, const double speed,
     const std::shared_ptr<std::atomic<bool>> & stop, const rclcpp::Logger & logger,
-    bool & stopped_by_user, const std::string & what, const bool allow_partial = false)
+    bool & stopped_by_user, const std::string & what, const bool allow_partial = false,
+    const bool log_error = true)
   {
     stopped_by_user = false;
     if (waypoints.empty() || speed <= 0.0) {
@@ -253,6 +306,8 @@ public:
         w.position.x - prev.x, w.position.y - prev.y, w.position.z - prev.z);
       prev = w.position;
     }
+    // もう着いている（0.5 mm 未満）ときは動かない。短すぎる経路は計算できないため
+    if (length < 0.0005) {return true;}
 
     moveit_msgs::msg::RobotTrajectory trajectory;
     const double eef_step = 0.001;  // 1 mm ごとに経路を計算する
@@ -267,6 +322,16 @@ public:
       RCLCPP_WARN(
         logger, "[cartesian] %s: can follow only %.0f %% of the path (joint or elbow limit)",
         what.c_str(), fraction * 100.0);
+      // 最後に計算できた点の関節の角度（どの関節が制限に当たったかを見るため）
+      const auto & names = trajectory.joint_trajectory.joint_names;
+      const auto & last = points.back().positions;
+      std::string joints;
+      for (size_t i = 0; i < names.size() && i < last.size(); ++i) {
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), " %s=%.1f", names[i].c_str(), angles::to_degrees(last[i]));
+        joints += buf;
+      }
+      RCLCPP_WARN(logger, "[cartesian] %s: last joints [deg]:%s", what.c_str(), joints.c_str());
       if (!allow_partial) {return false;}
     }
 
@@ -294,7 +359,7 @@ public:
 
     // 目標（waypoints の最後）と、モーターのエンコーダが読んだ実際の手の位置の差を表示する。
     // 腕が目標に着いているか、重さでたわんでいないかの確認に使う（止められたときは除く）
-    if (!stopped_by_user && static_cast<bool>(code)) {
+    if (log_error && !stopped_by_user && static_cast<bool>(code)) {
       std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 止まるのを待つ
       const auto actual = move_group_arm_->getCurrentPose().pose.position;
       const auto & goal = waypoints.back().position;
@@ -320,6 +385,144 @@ public:
       {goal}, speed, stop, logger, stopped_by_user,
       "Move hand straight from z=" + std::to_string(z0) + " to z=" +
       std::to_string(target_z) + " [m]", true);
+  }
+
+  // 今いる位置で、target（本来あるべき位置）とのずれを測り、ずれの分だけ指令をずらして
+  // まっすぐ動き直す。ずれが comp.tol より小さくなるか、comp.max_iter 回動き直したら終わる。
+  //
+  // なぜ直るか：モーターは「指令と今の角度の差」に比例した力しか出さない（P 制御）ので、
+  // 腕の重さを支えるぶん、いつも目標の手前で止まる。このずれは同じ姿勢ならほぼ同じ
+  // （実機で ±1〜1.5 mm）。そこで target − ずれ を指令すると、同じだけ手前で止まった位置が
+  // ちょうど target になる。target そのものは変えず、指令（offset）だけをずらすので、
+  // ずれがたまることはない。
+  //
+  // offset：指令のずらし量 [m]。前の場所で決まった値を持ち越し、この中で更新する
+  // （上で横の位置を合わせたあと、下ろすときも同じだけずらすため）
+  bool correct_position(
+    const geometry_msgs::msg::Pose & target, const double speed, const CompConfig & comp,
+    Offset & offset, const rclcpp::Logger & logger, const std::string & what)
+  {
+    for (int k = 0; ; ++k) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 止まるのを待つ
+      const auto actual = move_group_arm_->getCurrentPose().pose.position;
+      const double ex = actual.x - target.position.x;
+      const double ey = actual.y - target.position.y + comp.fake_error_y;
+      const double ez = comp.use_z ? actual.z - target.position.z : 0.0;
+      RCLCPP_INFO(
+        logger, "[comp] %s: try %d error dx=%+.1f dy=%+.1f dz=%+.1f [mm]%s", what.c_str(), k,
+        ex * 1000.0, ey * 1000.0, (actual.z - target.position.z) * 1000.0,
+        comp.use_z ? "" : " (z not corrected)");
+
+      if (std::hypot(ex, ey) < comp.tol && std::abs(ez) < comp.tol) {return true;}
+      if (k >= comp.max_iter) {
+        RCLCPP_WARN(logger, "[comp] %s: still %.1f mm off after %d tries", what.c_str(),
+          std::hypot(ex, ey) * 1000.0, k);
+        return true;  // ずれが残っても、動作は続ける
+      }
+
+      Offset next{offset.x - ex, offset.y - ey, offset.z - ez};
+      if (std::hypot(next.x, next.y, next.z) > comp.max_total) {
+        // 測り間違いなどで大きく動くのを防ぐ
+        RCLCPP_WARN(
+          logger, "[comp] %s: correction %.1f mm is over the limit %.1f mm. Not corrected.",
+          what.c_str(), std::hypot(next.x, next.y, next.z) * 1000.0, comp.max_total * 1000.0);
+        return true;
+      }
+      offset = next;
+      geometry_msgs::msg::Pose command = target;
+      command.position.x += offset.x;
+      command.position.y += offset.y;
+      command.position.z += offset.z;
+      bool stopped = false;
+      if (!move_hand_cartesian(
+          {command}, speed, nullptr, logger, stopped,
+          what + " (correction " + std::to_string(k + 1) + ")", false, false))
+      {
+        return false;
+      }
+    }
+  }
+
+  // target へまっすぐ動き、comp.enabled なら、着いたところでずれを補正する。
+  // 指令は、持ち越した offset だけ最初からずらしておく
+  bool move_hand_compensated(
+    const geometry_msgs::msg::Pose & target, const double speed, const CompConfig & comp,
+    Offset & offset, const rclcpp::Logger & logger, const std::string & what)
+  {
+    geometry_msgs::msg::Pose command = target;
+    if (comp.enabled) {
+      command.position.x += offset.x;
+      command.position.y += offset.y;
+      command.position.z += offset.z;
+    }
+    bool stopped = false;
+    if (!move_hand_cartesian(
+        {command}, speed, nullptr, logger, stopped, what, false, !comp.enabled))
+    {
+      return false;
+    }
+    return !comp.enabled || correct_position(target, speed, comp, offset, logger, what);
+  }
+
+  // 手を pose にして、腕を「平らな形」にする：上腕のねじり（twist）と前腕のねじり
+  // （lower_arm_fixed）が ±tol_deg 以内で、根本の回転（pan）を手の方向に向けた形。
+  //
+  // なぜ：7 軸のアームは、同じ手の位置・向きでも腕の形がいくつもある。MoveIt に手の位置だけ
+  // を渡すと、上腕がねじれた形を選ぶことがあり、そこから左右へまっすぐ動くと、ねじりの関節が
+  // 制限（±30°）の端に当たって途中で止まる。ねじりがほぼ 0 の形から始めれば、左右の動きは
+  // 根本の回転が受け持つので、制限に当たりにくい。
+  //
+  // 関節の角度は自分で逆運動学（IK）を解いて決め、その角度へ動かす（関節の目標で動く）
+  bool move_arm_planar(
+    const geometry_msgs::msg::Pose & pose, const double tol_deg, const rclcpp::Logger & logger,
+    const std::string & what)
+  {
+    if (!confirm_step(what)) {return false;}
+    auto state = move_group_arm_->getCurrentState(2.0);
+    if (!state) {
+      RCLCPP_ERROR(logger, "[planar] could not get the current robot state");
+      return false;
+    }
+    const auto * group = state->getJointModelGroup("arm");
+
+    // IK の出発点：ねじりを 0、根本を手の方向に向けた形（解がこの近くで見つかりやすい）
+    state->setVariablePosition(kPanJoint, std::atan2(pose.position.y, pose.position.x));
+    state->setVariablePosition(kTwistJoint, 0.0);
+    state->setVariablePosition(kForearmTwistJoint, 0.0);
+
+    // 解の条件：ねじり 2 つが ±tol_deg 以内、肘が set_elbow_limit の範囲内
+    const double tol = angles::from_degrees(tol_deg);
+    const auto acceptable = [this, tol](
+      moveit::core::RobotState * s, const moveit::core::JointModelGroup * g,
+      const double * values) {
+        s->setJointGroupPositions(g, values);
+        const double elbow = s->getVariablePosition(kElbowJoint);
+        return std::abs(s->getVariablePosition(kTwistJoint)) <= tol &&
+               std::abs(s->getVariablePosition(kForearmTwistJoint)) <= tol &&
+               (!elbow_limit_enabled_ || (elbow >= elbow_min_ && elbow <= elbow_max_));
+      };
+    if (!state->setFromIK(group, pose, 1.0, acceptable)) {
+      RCLCPP_ERROR(
+        logger, "[planar] %s: no IK solution with twists within %.0f deg", what.c_str(), tol_deg);
+      return false;
+    }
+    std::vector<double> joints;
+    state->copyJointGroupPositions(group, joints);
+    RCLCPP_INFO(
+      logger, "[planar] %s: pan=%.1f twist=%.1f elbow=%.1f forearm_twist=%.1f [deg]",
+      what.c_str(), angles::to_degrees(state->getVariablePosition(kPanJoint)),
+      angles::to_degrees(state->getVariablePosition(kTwistJoint)),
+      angles::to_degrees(state->getVariablePosition(kElbowJoint)),
+      angles::to_degrees(state->getVariablePosition(kForearmTwistJoint)));
+    move_group_arm_->setJointValueTarget(joints);
+    return static_cast<bool>(move_group_arm_->move());
+  }
+
+  // 今の上腕のねじり（twist）[deg]。左右へ運ぶ前に、腕が平らな形か確かめるため
+  double current_twist_deg()
+  {
+    const auto state = move_group_arm_->getCurrentState(2.0);
+    return state ? angles::to_degrees(state->getVariablePosition(kTwistJoint)) : std::nan("");
   }
 
   // 肘の角度の範囲 [deg] を set_constraints に加える。
@@ -528,11 +731,12 @@ bool run_lift_place(
 // テスト7：home から、つかむ位置の上へ移動し、真下へ下ろしてつかむ → まっすぐ持ち上げる →
 // 高さと手の向きを保ったまま、(dx, dy) [m] だけ水平にまっすぐ動く → まっすぐ下ろす →
 // 離す → まっすぐ持ち上げる。手は常に真下を向け、グリッパ（指）は水平にする。
-// 目標はすべて「本来あるべき位置と向き」から計算する（測った値を使うと、ずれがたまる）
+// 目標はすべて「本来あるべき位置と向き」から計算する（測った値を使うと、ずれがたまる）。
+// comp.enabled なら、つかむ場所・置く場所で、腕が手前で止まるぶんを補正する（correct_position）
 bool run_pick_move(
   PickAndPlace & robot, const rclcpp::Logger & logger, const HandPose & pick,
   const double grasp_deg, const double release_deg, const double dz, const double speed,
-  const double dx, const double dy)
+  const double dx, const double dy, const CompConfig & comp, const double planar_tol_deg)
 {
   HandPose above = pick;
   above.z += dz;
@@ -543,8 +747,9 @@ bool run_pick_move(
   place_above.z += dz;
 
   RCLCPP_INFO(
-    logger, "[pick_move] pick (%.3f, %.3f, %.3f) -> place (%.3f, %.3f, %.3f) [m]",
-    pick.x, pick.y, pick.z, place.x, place.y, place.z);
+    logger, "[pick_move] pick (%.3f, %.3f, %.3f) -> place (%.3f, %.3f, %.3f) [m], "
+    "compensation %s", pick.x, pick.y, pick.z, place.x, place.y, place.z,
+    comp.enabled ? "ON" : "OFF");
   bool stopped = false;
   const auto step = [&logger](const bool ok, const char * what) {
       RCLCPP_INFO(logger, "[pick_move] %s : %s", what, ok ? "OK" : "FAILED");
@@ -554,16 +759,36 @@ bool run_pick_move(
       return step(
         robot.move_hand_cartesian({to_pose(to)}, speed, nullptr, logger, stopped, what), what);
     };
+  // 補正は、つかむ場所・置く場所のそれぞれで、まず真上（周りに当たらない高さ）で横の位置を
+  // 合わせ、同じずらし量のまま下ろし、下でもう一度合わせる。場所ごとにずらし量を測り直す
+  Offset at_pick;
+  Offset at_place;
+  // 左右へ運ぶ直前の、上腕のねじり（平らな形を保てているかの確認用）
+  const auto log_twist = [&]() {
+      RCLCPP_INFO(logger, "[pick_move] twist before moving sideways: %.1f [deg]",
+        robot.current_twist_deg());
+      return true;
+    };
+  const auto compensated = [&](const HandPose & to, Offset & offset, const char * what) {
+      return step(robot.move_hand_compensated(to_pose(to), speed, comp, offset, logger, what),
+      what);
+    };
   return
-    step(
-    robot.control_arm(above.x, above.y, above.z, above.roll, above.pitch, above.yaw),
+    // 真上へは、腕を「平らな形」（ねじりがほぼ 0）にして移動する。左右へ運ぶとき、
+    // ねじりの関節が制限に当たって途中で止まらないように（move_arm_planar）
+    step(robot.move_arm_planar(to_pose(above), planar_tol_deg, logger, "move above the piece"),
     "move above the piece") &&
+    step(
+    !comp.enabled ||
+    robot.correct_position(to_pose(above), speed, comp, at_pick, logger, "above the piece"),
+    "correct above the piece") &&
     step(robot.move_gripper_angle(angles::from_degrees(release_deg)), "open") &&
-    straight(pick, "go down") &&
+    compensated(pick, at_pick, "go down") &&
     step(robot.move_gripper_angle(angles::from_degrees(grasp_deg)), "grasp") &&
     straight(above, "lift") &&
-    straight(place_above, "move sideways") &&
-    straight(place, "put down") &&
+    log_twist() &&
+    compensated(place_above, at_place, "move sideways") &&
+    compensated(place, at_place, "put down") &&
     step(robot.move_gripper_angle(angles::from_degrees(release_deg)), "release") &&
     straight(place_above, "move away");
 }
@@ -688,6 +913,12 @@ int main(int argc, char ** argv)
 
   PickAndPlace controller(node);
   const auto logger = node->get_logger();
+  if (!controller.wait_for_robot_state(10.0)) {
+    RCLCPP_ERROR(logger, "Could not receive the robot joint states. Is the robot running?");
+    rclcpp::shutdown();
+    spin_thread.join();
+    return 1;
+  }
 
   // launch の引数から設定を読む（指定が無ければ、右の値を使う）
   const std::string mode = node->get_parameter_or<std::string>("mode", "single");
@@ -729,6 +960,14 @@ int main(int argc, char ** argv)
   const double place_dx = node->get_parameter_or<double>("place_dx", 0.0);
   const double place_dy = node->get_parameter_or<double>("place_dy", 0.15);
   const double pick_grasp_deg = node->get_parameter_or<double>("pick_grasp_deg", -2.0);
+  CompConfig comp;
+  comp.enabled = node->get_parameter_or<bool>("comp_enabled", true);
+  comp.tol = node->get_parameter_or<double>("comp_tol_mm", 1.0) / 1000.0;
+  comp.max_iter = node->get_parameter_or<int>("comp_max_iter", 2);
+  comp.max_total = node->get_parameter_or<double>("comp_max_mm", 10.0) / 1000.0;
+  comp.use_z = node->get_parameter_or<bool>("comp_use_z", false);
+  comp.fake_error_y = node->get_parameter_or<double>("comp_fake_error_mm", 0.0) / 1000.0;
+  const double planar_tol_deg = node->get_parameter_or<double>("planar_tol_deg", 5.0);
   const double down_elbow_min_deg = node->get_parameter_or<double>("down_elbow_min_deg", -135.0);
   const double down_elbow_max_deg = node->get_parameter_or<double>("down_elbow_max_deg", -45.0);
 
@@ -825,7 +1064,7 @@ int main(int argc, char ** argv)
   } else if (mode == "pick_move") {
     ok = run_pick_move(
       controller, logger, PICK, pick_grasp_deg, gripper_open_deg, lift_dz, lift_speed,
-      place_dx, place_dy);
+      place_dx, place_dy, comp, planar_tol_deg);
     keep_gripper = true;  // 終わったら home に戻り、グリッパは開いたままにする
   } else if (keep_start) {
     ok = run_lift_place(controller, logger, lift_dz, lift_speed, gripper_open_deg);
