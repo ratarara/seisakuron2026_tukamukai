@@ -139,8 +139,8 @@ I:  I I I I     S:  . S S     L:  L L L
 | `case_x` `case_y` `case_yaw_deg` | 0.22, -0.04, 0 | ケースの角の位置と向き |
 | `tray_x` `tray_y` `tray_dx` `tray_dy` | 0.20, 0.12, 0.08, 0.09 | 置き場の先頭の位置と間隔 |
 | `tray_piece_deg` | 0 | 置き場のピースの向き |
-| `pick_z` | 0.110 | つかむ高さ（手首の付け根）[m] |
-| `fill_release_dz` | 0.003 | つかむ高さよりこれだけ上で離す [m] |
+| `pick_z` | 0.112 | つかむ高さ（手首の付け根）[m] |
+| `fill_release_dz` | 0.007 | つかむ高さよりこれだけ上で離す [m] |
 | `fill_place_open_deg` | 5 | 離すときの指の角度。20° だととなりの取っ手に当たる計算 |
 | `fill_lift_dz` | 0.08 | 持ち上げる高さ [m] |
 

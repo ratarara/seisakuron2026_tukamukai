@@ -1050,6 +1050,13 @@ bool pick_and_place_piece(
   HandPose place_above = place;
   place_above.z = above.z;
   // 横に運ぶあいだは、つかんだときの手の向きのまま。置く場所の真上で手首を回す
+  // 指が取っ手より上にある高さでいったん止まり、傾きと位置を直してから下ろす。真上（5 cm 以上
+  // 上）で合わせても、下りる途中で 2〜3° 傾き、指先が約 1 cm ずれるため
+  constexpr double hover_dz = 0.015;
+  HandPose pick_hover = pick;
+  pick_hover.z += hover_dz;
+  HandPose place_hover = place;
+  place_hover.z += hover_dz;
   HandPose place_above_before_turn = place_above;
   place_above_before_turn.yaw = yaw.pick_hand;
 
@@ -1078,10 +1085,6 @@ bool pick_and_place_piece(
       RCLCPP_INFO(
         logger, "[pick_move] grip: command %.1f, actual %.1f [deg], gap about %.1f [mm]",
         c.grasp_deg, actual, 2.0 * 77.4 * std::sin(angles::from_degrees(actual)));
-      // 指令の近くまで閉じたなら、指の間に何もない。挟めていれば、取っ手の手前で止まる
-      if (actual < 0.0) {
-        RCLCPP_WARN(logger, "[pick_move] grip: the fingers closed past 0 deg. Nothing is held?");
-      }
       return true;
     };
   const auto compensated = [&](const HandPose & to, Offset & offset, const char * what) {
@@ -1099,6 +1102,7 @@ bool pick_and_place_piece(
     robot.correct_position(to_pose(above), c.speed, c.comp, at_pick, logger, "above the piece"),
     "correct above the piece") &&
     step(robot.move_gripper_angle(angles::from_degrees(c.pick_open_deg)), "open") &&
+    compensated(pick_hover, at_pick, "go down near the piece") &&
     compensated(pick, at_pick, "go down") &&
     step(robot.move_gripper_angle(angles::from_degrees(c.grasp_deg)), "grasp") &&
     log_grip() &&
@@ -1107,6 +1111,7 @@ bool pick_and_place_piece(
     compensated(place_above_before_turn, at_place, "move sideways") &&
     (std::abs(yaw.wrist_turn) < 0.5 ||
     step(robot.rotate_wrist_to(yaw.place_hand, logger), "rotate the wrist")) &&
+    compensated(place_hover, at_place, "put down near the case") &&
     compensated(place, at_place, "put down") &&
     step(robot.move_gripper_angle(angles::from_degrees(c.place_open_deg)), "release") &&
     // ここも同じ。戻すと、開いた指が置いたピースの取っ手に当たるおそれがある
@@ -1450,7 +1455,7 @@ int main(int argc, char ** argv)
   // 置いて離すときの指の角度。4×4 ではとなりの取っ手まで約 25 mm しかないので、大きく開かない
   // （20° だと片側約 24 mm 開き、当たる。5° なら片側約 6 mm）
   const double fill_place_open_deg = node->get_parameter_or<double>("fill_place_open_deg", 5.0);
-  const double fill_release_dz = node->get_parameter_or<double>("fill_release_dz", 0.003);
+  const double fill_release_dz = node->get_parameter_or<double>("fill_release_dz", 0.007);
   CompConfig comp;
   comp.enabled = node->get_parameter_or<bool>("comp_enabled", true);
   comp.tol = node->get_parameter_or<double>("comp_tol_mm", 1.0) / 1000.0;
@@ -1497,7 +1502,7 @@ int main(int argc, char ** argv)
   const HandPose PICK{
     node->get_parameter_or<double>("pick_x", 0.25),
     node->get_parameter_or<double>("pick_y", 0.0),
-    node->get_parameter_or<double>("pick_z", 0.110),
+    node->get_parameter_or<double>("pick_z", 0.112),
     -180.0, 0.0,
     node->get_parameter_or<double>("pick_yaw", -90.0)};
 
