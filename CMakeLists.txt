@@ -17,6 +17,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
 # ソルバー（ROS に依存しないライブラリ）
@@ -26,7 +27,8 @@ target_include_directories(tukamukai_solver PUBLIC
   $<INSTALL_INTERFACE:include>)
 
 # マスの座標をケース座標・ロボット座標に直す、手の向きを決める（ROS に依存しないライブラリ、#31・#27）
-add_library(tukamukai_geometry src/board_geometry.cpp src/grasp_yaw.cpp)
+add_library(tukamukai_geometry
+  src/board_geometry.cpp src/grasp_yaw.cpp src/piece_assignment.cpp)
 target_include_directories(tukamukai_geometry PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
@@ -49,6 +51,7 @@ ament_target_dependencies(pick_place_node
   moveit_ros_planning_interface
   rclcpp
   tf2_geometry_msgs
+  tf2_ros
 )
 target_link_libraries(pick_place_node tukamukai_geometry)
 
@@ -78,6 +81,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_grasp_yaw test/test_grasp_yaw.cpp)
   target_link_libraries(test_grasp_yaw tukamukai_geometry)
+
+  ament_add_gtest(test_piece_assignment test/test_piece_assignment.cpp)
+  target_link_libraries(test_piece_assignment tukamukai_geometry)
 endif()
 
 ament_package()

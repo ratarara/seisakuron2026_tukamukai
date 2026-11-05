@@ -69,6 +69,13 @@ NODE_ARGS = {
     'tray_dx': ('0.08', float, 'fill_4x4 mode: spacing [m] of the waiting pieces along x'),
     'tray_dy': ('0.09', float, 'fill_4x4 mode: spacing [m] of the waiting pieces along y'),
     'tray_piece_deg': ('0.0', float, 'fill_4x4 mode: yaw [deg] of the waiting pieces'),
+    'piece_source': (
+        'tray', str,
+        'fill_4x4 mode: tray = fixed waiting positions, '
+        'tf = read tf frames piece_<kind>_<n> from the recognizer',
+    ),
+    'tf_wait_sec': ('5.0', float, 'fill_4x4 mode (tf): wait this long [s] for all pieces'),
+    'tf_max_age_sec': ('5.0', float, 'fill_4x4 mode (tf): ignore tf older than this [s]'),
     'fill_lift_dz': ('0.08', float, 'fill_4x4 mode: how high to lift [m]'),
     'fill_place_open_deg': ('5.0', float, 'fill_4x4 mode: finger angle [deg] when releasing'),
     'fill_release_dz': ('0.003', float, 'fill_4x4 mode: release this much [m] above pick_z'),
