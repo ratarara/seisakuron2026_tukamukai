@@ -32,6 +32,14 @@ target_include_directories(tukamukai_geometry PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(tukamukai_geometry tukamukai_solver)
 
+# ピースの向きを画像から求める（ROS に依存しないライブラリ。色の切り出しは認識のコードで行う）
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+add_library(tukamukai_angle src/piece_angle.cpp)
+target_include_directories(tukamukai_angle PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(tukamukai_angle tukamukai_solver opencv_core opencv_imgproc)
+
 # 実行ファイル。ノードを作ったらここに add_executable を追加し、install(TARGETS) にも足す
 add_executable(solver_demo src/solver_demo.cpp)
 target_link_libraries(solver_demo tukamukai_solver)
@@ -52,7 +60,7 @@ ament_target_dependencies(pick_place_node
 )
 target_link_libraries(pick_place_node tukamukai_geometry)
 
-install(TARGETS tukamukai_solver tukamukai_geometry
+install(TARGETS tukamukai_solver tukamukai_geometry tukamukai_angle
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib)
 install(TARGETS solver_demo solver_viz pick_place_node
@@ -83,6 +91,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_board_geometry test/test_board_geometry.cpp)
   target_link_libraries(test_board_geometry tukamukai_geometry)
+
+  ament_add_gtest(test_piece_angle test/test_piece_angle.cpp)
+  target_link_libraries(test_piece_angle tukamukai_angle)
 endif()
 
 ament_package()
