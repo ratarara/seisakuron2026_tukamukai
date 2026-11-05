@@ -143,11 +143,21 @@ TEST(Solver, InvalidArguments)
   EXPECT_THROW(tukamukai::solve(4, 4, {{'X', 4}}), std::invalid_argument);
   EXPECT_THROW(tukamukai::solve(9, 8, {{'O', 18}}), std::invalid_argument);
 }
-
 TEST(Solver, Render)
 {
   const std::set<Cell> filled{{0, 0}, {0, 1}, {0, 2}, {0, 3}};
   const auto result = tukamukai::solve(2, 4, {{'I', 1}}, filled);
   ASSERT_TRUE(result.has_value());
   EXPECT_EQ(tukamukai::render(2, 4, *result, filled), "# # # #\nI I I I");
+}
+TEST(Solver, Solve4x4WithISLL)
+{
+  const PieceCounts pieces{{'I', 1}, {'S', 1}, {'L', 2}};
+  expect_valid(4, 4, pieces, {}, tukamukai::solve(4, 4, pieces));
+}
+
+TEST(Solver, CannotSolve4x4WithISSL)
+{
+  const PieceCounts pieces{{'I', 1}, {'S', 2}, {'L', 1}};
+  EXPECT_FALSE(tukamukai::solve(4, 4, pieces).has_value());
 }
