@@ -60,15 +60,53 @@ struct CompConfig
   // 試験用：測ったずれに、横（y）にこの量を足す [m]。Mock は腕が指令どおりに止まり、
   // ずれが 0 なので、補正の動きを確かめるときに使う。実機では 0 のままにする
   double fake_error_y = 0.0;
+  // 手の傾き（前後・左右）も補正するか。腕や手の重さで手首が下がると、手の前側が下がるように
+  // 傾く（2026-11-08、実機でつかむとき）。位置と同じく、傾いた分だけ逆に傾けた向きを指令する
+  bool use_tilt = true;
+  double tol_tilt = 0.5 * M_PI / 180.0;   // これより小さい傾きは補正しない [rad]
+  double max_tilt = 6.0 * M_PI / 180.0;   // 傾けて指令する量の上限 [rad]。超えたら補正しない
+  // 試験用：測った傾きに、base_link の y 軸まわりにこの量を足す [rad]（Mock は傾かないため）
+  double fake_tilt_y = 0.0;
 };
 
-// 指令のずらし量 [m]
+// 指令のずらし量（位置 [m] と、base_link の x・y 軸まわりの傾き [rad]）
 struct Offset
 {
   double x = 0.0;
   double y = 0.0;
   double z = 0.0;
+  double rx = 0.0;
+  double ry = 0.0;
 };
+
+// 手の向き q を、base_link の x・y 軸まわりに (rx, ry) だけ回す（小さな角度の補正用）
+geometry_msgs::msg::Quaternion tilt_orientation(
+  const geometry_msgs::msg::Quaternion & q, const double rx, const double ry)
+{
+  const double angle = std::hypot(rx, ry);
+  if (angle < 1e-9) {return q;}
+  tf2::Quaternion q_tilt;
+  q_tilt.setRotation(tf2::Vector3(rx / angle, ry / angle, 0.0), angle);
+  tf2::Quaternion q_in;
+  tf2::fromMsg(q, q_in);
+  return tf2::toMsg((q_tilt * q_in).normalized());
+}
+
+// 実際の手の向きが、目標の向きから base_link の x・y 軸まわりにどれだけ傾いているか [rad]
+std::pair<double, double> tilt_error(
+  const geometry_msgs::msg::Quaternion & actual, const geometry_msgs::msg::Quaternion & target)
+{
+  tf2::Quaternion qa;
+  tf2::Quaternion qt;
+  tf2::fromMsg(actual, qa);
+  tf2::fromMsg(target, qt);
+  const tf2::Quaternion qe = (qa * qt.inverse()).normalized();
+  double angle = qe.getAngle();  // 0〜2π
+  if (angle > M_PI) {angle -= 2.0 * M_PI;}
+  if (std::abs(angle) < 1e-9) {return {0.0, 0.0};}
+  const tf2::Vector3 axis = qe.getAxis();
+  return {axis.x() * angle, axis.y() * angle};
+}
 
 class PickAndPlace
 {
@@ -309,16 +347,23 @@ public:
     }
     if (!confirm_step(what)) {return false;}
 
-    // 経路の長さ（今の手の位置から、waypoints を順にたどった距離）
-    geometry_msgs::msg::Point prev = move_group_arm_->getCurrentPose().pose.position;
+    // 経路の長さ（今の手の位置から、waypoints を順にたどった距離）と、手の向きの変わる角度
+    const auto start = move_group_arm_->getCurrentPose().pose;
+    geometry_msgs::msg::Point prev = start.position;
     double length = 0.0;
     for (const auto & w : waypoints) {
       length += std::hypot(
         w.position.x - prev.x, w.position.y - prev.y, w.position.z - prev.z);
       prev = w.position;
     }
-    // もう着いている（0.5 mm 未満）ときは動かない。短すぎる経路は計算できないため
-    if (length < 0.0005) {return true;}
+    tf2::Quaternion q_start;
+    tf2::Quaternion q_goal;
+    tf2::fromMsg(start.orientation, q_start);
+    tf2::fromMsg(waypoints.back().orientation, q_goal);
+    const double turn = q_start.angleShortestPath(q_goal);  // [rad]
+    // もう着いている（0.5 mm 未満、かつ向きの差 0.1° 未満）ときは動かない。
+    // 向きだけを直すとき（傾きの補正）は、位置がほとんど変わらなくても動く
+    if (length < 0.0005 && turn < angles::from_degrees(0.1)) {return true;}
 
     moveit_msgs::msg::RobotTrajectory trajectory;
     const double eef_step = 0.001;  // 1 mm ごとに経路を計算する
@@ -346,8 +391,10 @@ public:
       if (!allow_partial) {return false;}
     }
 
-    // 一定の速さで動くよう、各点の時刻を付け直す（点は経路上にほぼ等間隔に並ぶ）
-    const double duration = std::max(length * fraction / speed, 0.1);
+    // 一定の速さで動くよう、各点の時刻を付け直す（点は経路上にほぼ等間隔に並ぶ）。
+    // 向きを変えるときは、毎秒 10° より速く回らないようにする
+    const double duration = std::max(
+      {length * fraction / speed, turn / angles::from_degrees(10.0), 0.1});
     for (size_t i = 0; i < points.size(); ++i) {
       const double t = duration * static_cast<double>(i) / static_cast<double>(points.size() - 1);
       points[i].time_from_start = rclcpp::Duration::from_seconds(t);
@@ -415,23 +462,38 @@ public:
   {
     for (int k = 0; ; ++k) {
       std::this_thread::sleep_for(std::chrono::milliseconds(500));  // 止まるのを待つ
-      const auto actual = move_group_arm_->getCurrentPose().pose.position;
+      const auto actual_pose = move_group_arm_->getCurrentPose().pose;
+      const auto & actual = actual_pose.position;
       const double ex = actual.x - target.position.x;
       const double ey = actual.y - target.position.y + comp.fake_error_y;
       const double ez = comp.use_z ? actual.z - target.position.z : 0.0;
+      auto [erx, ery] = tilt_error(actual_pose.orientation, target.orientation);
+      ery += comp.fake_tilt_y;
+      if (!comp.use_tilt) {erx = ery = 0.0;}
       RCLCPP_INFO(
-        logger, "[comp] %s: try %d error dx=%+.1f dy=%+.1f dz=%+.1f [mm]%s", what.c_str(), k,
-        ex * 1000.0, ey * 1000.0, (actual.z - target.position.z) * 1000.0,
-        comp.use_z ? "" : " (z not corrected)");
+        logger, "[comp] %s: try %d error dx=%+.1f dy=%+.1f dz=%+.1f [mm]%s, "
+        "tilt rx=%+.2f ry=%+.2f [deg]%s", what.c_str(), k, ex * 1000.0, ey * 1000.0,
+        (actual.z - target.position.z) * 1000.0, comp.use_z ? "" : " (z not corrected)",
+        angles::to_degrees(erx), angles::to_degrees(ery),
+        comp.use_tilt ? "" : " (tilt not corrected)");
 
-      if (std::hypot(ex, ey) < comp.tol && std::abs(ez) < comp.tol) {return true;}
+      const bool tilt_ok = std::hypot(erx, ery) < comp.tol_tilt;
+      if (std::hypot(ex, ey) < comp.tol && std::abs(ez) < comp.tol && tilt_ok) {return true;}
       if (k >= comp.max_iter) {
         RCLCPP_WARN(logger, "[comp] %s: still %.1f mm off after %d tries", what.c_str(),
           std::hypot(ex, ey) * 1000.0, k);
         return true;  // ずれが残っても、動作は続ける
       }
 
-      Offset next{offset.x - ex, offset.y - ey, offset.z - ez};
+      Offset next{offset.x - ex, offset.y - ey, offset.z - ez, offset.rx - erx, offset.ry - ery};
+      if (std::hypot(next.rx, next.ry) > comp.max_tilt) {
+        RCLCPP_WARN(
+          logger, "[comp] %s: tilt correction %.1f deg is over the limit %.1f deg. "
+          "Tilt not corrected.", what.c_str(), angles::to_degrees(std::hypot(next.rx, next.ry)),
+          angles::to_degrees(comp.max_tilt));
+        next.rx = offset.rx;
+        next.ry = offset.ry;
+      }
       if (std::hypot(next.x, next.y, next.z) > comp.max_total) {
         // 測り間違いなどで大きく動くのを防ぐ
         RCLCPP_WARN(
@@ -444,6 +506,7 @@ public:
       command.position.x += offset.x;
       command.position.y += offset.y;
       command.position.z += offset.z;
+      command.orientation = tilt_orientation(target.orientation, offset.rx, offset.ry);
       bool stopped = false;
       if (!move_hand_cartesian(
           {command}, speed, nullptr, logger, stopped,
@@ -465,6 +528,7 @@ public:
       command.position.x += offset.x;
       command.position.y += offset.y;
       command.position.z += offset.z;
+      command.orientation = tilt_orientation(target.orientation, offset.rx, offset.ry);
     }
     bool stopped = false;
     if (!move_hand_cartesian(
@@ -1501,6 +1565,11 @@ int main(int argc, char ** argv)
   comp.max_total = node->get_parameter_or<double>("comp_max_mm", 15.0) / 1000.0;
   comp.use_z = node->get_parameter_or<bool>("comp_use_z", false);
   comp.fake_error_y = node->get_parameter_or<double>("comp_fake_error_mm", 0.0) / 1000.0;
+  comp.use_tilt = node->get_parameter_or<bool>("comp_use_tilt", true);
+  comp.tol_tilt = angles::from_degrees(node->get_parameter_or<double>("comp_tol_tilt_deg", 0.5));
+  comp.max_tilt = angles::from_degrees(node->get_parameter_or<double>("comp_max_tilt_deg", 6.0));
+  comp.fake_tilt_y =
+    angles::from_degrees(node->get_parameter_or<double>("comp_fake_tilt_deg", 0.0));
   const double planar_tol_deg = node->get_parameter_or<double>("planar_tol_deg", 5.0);
   const double tip_x = node->get_parameter_or<double>("tip_x", 0.25);
   const double tip_y = node->get_parameter_or<double>("tip_y", 0.0);
