@@ -1,0 +1,18 @@
+# 撮影姿勢（#47）：カメラを真下に向けて、4×4 の置き場とケースを全部写す姿勢。
+# IK で計算した値。実機のカメラではまだ確かめていない（2026-11-02）。
+#
+# カメラの位置：x = 0.240, y = 0.100, 高さ 0.26 m（真下向き。画像の長辺が左右）
+# 写る範囲：前後 200 mm × 左右 357 mm（D435 のカラー 69° × 42° からの計算）
+# 写したい範囲：前後 120 mm × 左右 280 mm（配置図 docs/fill_4x4_layout.png）
+# 高さ 0.30 m 以上は、手首の上下の関節（-90° まで）が届かず解がない
+observation_pose:
+  hand_xyz: [0.285, 0.132, 0.290]  # 手首の付け根の位置 [m]
+  hand_rpy_deg: [-180.0, 0.0, -90.0]  # 手を真下に向ける
+  joints_deg:
+    crane_x7_shoulder_fixed_part_pan_joint: 19.0
+    crane_x7_shoulder_revolute_part_tilt_joint: -15.6
+    crane_x7_upper_arm_revolute_part_twist_joint: 7.5
+    crane_x7_upper_arm_revolute_part_rotate_joint: -83.0
+    crane_x7_lower_arm_fixed_part_joint: -2.0
+    crane_x7_lower_arm_revolute_part_joint: -81.5
+    crane_x7_wrist_joint: -63.5
