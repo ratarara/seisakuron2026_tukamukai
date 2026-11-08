@@ -21,7 +21,6 @@ from cv_bridge import CvBridge
 from geometry_msgs.msg import TransformStamped
 import numpy as np
 import rclpy
-from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, Image
@@ -76,7 +75,7 @@ def piece_cells(kind, yaw, cell_px, cx, cy):
     return result
 
 
-def estimate_angle(contour, kind, coarse_deg=2.0, fine_deg=0.5):
+def estimate_angle(contour, kind, coarse_deg=5.0, fine_deg=0.5):
     """輪郭の内側を 1 つのピースとみなし、(向き [rad], 重心 x, y, 1 マス [px], 重なり) を返す."""
     m = cv2.moments(contour)
     if m['m00'] <= 0:
@@ -135,6 +134,12 @@ class PieceTfNode(Node):
         self.min_score = self.declare_parameter('min_score', 0.8).value
         # still_window_sec 秒前の画像からカメラがこれ以上動いていたら、tf を出さない [m]、[deg]
         self.still_window = self.declare_parameter('still_window_sec', 0.3).value
+        # 画像の時刻のカメラの位置（tf）がまだ届いていないときは、届いている一番新しい tf を使う。
+        # ただし画像の時刻との差がこれ以下のときだけ [s]（関節の角度の tf は 1 秒に 20 回ほどしか
+        # 来ない。tf を出すのはカメラが止まっているときだけなので、少しの差なら位置は同じ）
+        self.tf_tolerance = self.declare_parameter('tf_tolerance_sec', 0.2).value
+        self.max_rate = self.declare_parameter('max_rate_hz', 3.0).value
+        self.last_processed = None
         self.still_m = self.declare_parameter('still_tolerance_m', 0.002).value
         self.still_deg = self.declare_parameter('still_tolerance_deg', 1.0).value
         self.show_window = self.declare_parameter('show_window', False).value
@@ -180,8 +185,12 @@ class PieceTfNode(Node):
         return found
 
     def on_image(self, msg):
-        bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        pieces = self.detect(bgr)
+        # 処理が重いので、max_rate_hz より多くは処理しない（止まって撮るので、これで足りる）
+        now = self.get_clock().now()
+        if self.last_processed is not None and \
+                (now - self.last_processed).nanoseconds * 1e-9 < 1.0 / self.max_rate:
+            return
+        self.last_processed = now
 
         # カメラの位置（base_link から）。取れなければ画像の上だけで表示する
         camera = None
@@ -189,15 +198,32 @@ class PieceTfNode(Node):
         if self.K is None:
             status = 'no camera_info'
         else:
+            # tf を待たない（待っている間は、同じスレッドで tf を受け取れないため）
+            t = None
+            stamp = Time.from_msg(msg.header.stamp)
             try:
                 t = self.tf_buffer.lookup_transform(
-                    self.base_frame, msg.header.frame_id, Time.from_msg(msg.header.stamp),
-                    timeout=Duration(seconds=0.1))
+                    self.base_frame, msg.header.frame_id, stamp)
+            except TransformException:
+                try:
+                    latest = self.tf_buffer.lookup_transform(
+                        self.base_frame, msg.header.frame_id, Time())
+                    lag = (stamp - Time.from_msg(latest.header.stamp)).nanoseconds * 1e-9
+                    # 時刻 0 は static tf（カメラの位置を固定で与えたとき）
+                    if Time.from_msg(latest.header.stamp).nanoseconds == 0 or \
+                            abs(lag) <= self.tf_tolerance:
+                        t = latest
+                    else:
+                        status = f'tf too old ({lag:.2f} s)'
+                except TransformException as e:
+                    status = f'no tf {self.base_frame} <- {msg.header.frame_id}'
+                    self.get_logger().warn(f'{status}: {e}', throttle_duration_sec=5.0)
+            if t is not None:
                 tr, rot = t.transform.translation, t.transform.rotation
                 camera = (np.array([tr.x, tr.y, tr.z]), (rot.x, rot.y, rot.z, rot.w))
-            except TransformException as e:
-                status = f'no tf {self.base_frame} <- {msg.header.frame_id}'
-                self.get_logger().warn(f'{status}: {e}', throttle_duration_sec=5.0)
+
+        bgr = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        pieces = self.detect(bgr)
 
         stamp_sec = Time.from_msg(msg.header.stamp).nanoseconds * 1e-9
         still = camera is not None and self.is_still(stamp_sec, camera)

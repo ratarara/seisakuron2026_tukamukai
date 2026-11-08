@@ -1,20 +1,17 @@
-# 中間発表のデモ：カメラでピースを見つけ、4×4 のケースに敷き詰める
-#
-# 先に実機とカメラを起動し、RViz でアームを撮影姿勢（カメラが机のピースを真上から見る姿勢）に
-# してから、このファイルを起動する。
+# 中間発表のデモ：カメラでピースを見つけ、4×4 のケースに敷き詰める（Enter なしで通しで動く）
 #
 #   ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0 use_d435:=true
-#   # RViz でアームを撮影姿勢にして止める
 #   ros2 launch tukamukai demo_4x4.launch.py
 #
 # 起動するもの：
 #   1. 認識のノード piece_tf_node.py（tf piece_<種類>_<番号> を出す）
 #   2. 確認用の画像（rqt_image_view /piece_tf_node/image）。view:=false で出さない
-#   3. start_delay_sec 秒待ってから、fill_4x4（piece_source:=tf）
-#      fill_4x4 は始めにホーム姿勢へ動くので、撮影姿勢で止まっている間に認識が tf を出せるよう、
-#      先に待つ。ピースは動かないので、撮影姿勢で出した tf を使えるよう、tf の古さの基準は長くする
+#   3. fill_4x4（piece_source:=camera）：1 個ごとに
+#      「撮影姿勢 A へ動く → 止まってから撮った画像で、次に置く種類のピースを探す → つかんで置く」
+#      を繰り返し、最後に撮影姿勢 B でケースを見せてから、ホーム姿勢に戻る
 #
-# 最初は step_by_step:=true（初期値）のまま、1 動作ずつ Enter で確かめる。
+# 撮影姿勢 A・B の値は config/observation_pose.yaml。初めての場所や照明では、
+# step_by_step:=true で 1 動作ずつ確かめてから、通しで動かす。
 
 import os
 
@@ -27,15 +24,24 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
-ARGS = {
-    'step_by_step': ('true', 'true: confirm each motion with Enter (opens xterm)'),
-    'speed_scale': ('0.3', 'speed scale 0.0-1.0'),
-    'view': ('true', 'true: show the recognition image (rqt_image_view)'),
-    'start_delay_sec': ('5.0', 'wait this long [s] before starting fill_4x4'),
-    'tf_wait_sec': ('10.0', 'fill_4x4: wait this long [s] for all pieces'),
-    'tf_max_age_sec': ('60.0', 'fill_4x4: ignore tf older than this [s]'),
+# 認識のノードに渡すもの
+RECOGNIZER_ARGS = {
     'image_topic': ('/camera/color/image_raw', 'color image topic'),
     'plane_z': ('0.005', 'height [m] of the top of the pieces (from base_link)'),
+}
+
+# fill_4x4 に渡すもの
+FILL_ARGS = {
+    'step_by_step': ('false', 'true: confirm each motion with Enter (opens xterm)'),
+    'speed_scale': ('0.3', 'speed scale 0.0-1.0'),
+    'observe_x': ('0.29', 'hand x [m] to look at the pieces (pose A)'),
+    'observe_y': ('0.17', 'hand y [m] to look at the pieces (pose A)'),
+    'observe_z': ('0.30', 'hand height [m] to look at the pieces (pose A)'),
+    'show_x': ('0.31', 'hand x [m] to show the case at the end (pose B)'),
+    'show_y': ('0.02', 'hand y [m] to show the case at the end (pose B)'),
+    'show_z': ('0.30', 'hand height [m] to show the case at the end (pose B)'),
+    'show_at_end': ('true', 'move to pose B at the end'),
+    'observe_wait_sec': ('5.0', 'wait this long [s] for the next piece at pose A'),
     'case_x': ('0.22', 'x [m] of the case corner (outside of cell 0,0)'),
     'case_y': ('-0.04', 'y [m] of the case corner'),
     'case_yaw_deg': ('0.0', 'case yaw [deg]'),
@@ -45,8 +51,10 @@ ARGS = {
 def generate_launch_description():
     args = [
         DeclareLaunchArgument(name, default_value=default, description=description)
-        for name, (default, description) in ARGS.items()
+        for name, (default, description) in {**RECOGNIZER_ARGS, **FILL_ARGS}.items()
     ]
+    args.append(DeclareLaunchArgument(
+        'view', default_value='true', description='true: show the recognition image'))
 
     recognizer = Node(
         package='tukamukai',
@@ -66,26 +74,19 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('view')),
     )
 
+    fill_args = {'mode': 'fill_4x4', 'piece_source': 'camera'}
+    fill_args.update({name: LaunchConfiguration(name) for name in FILL_ARGS})
     fill = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
                 get_package_share_directory('tukamukai'), 'launch', 'pick_place.launch.py')
         ),
-        launch_arguments={
-            'mode': 'fill_4x4',
-            'piece_source': 'tf',
-            'step_by_step': LaunchConfiguration('step_by_step'),
-            'speed_scale': LaunchConfiguration('speed_scale'),
-            'tf_wait_sec': LaunchConfiguration('tf_wait_sec'),
-            'tf_max_age_sec': LaunchConfiguration('tf_max_age_sec'),
-            'case_x': LaunchConfiguration('case_x'),
-            'case_y': LaunchConfiguration('case_y'),
-            'case_yaw_deg': LaunchConfiguration('case_yaw_deg'),
-        }.items(),
+        launch_arguments=fill_args.items(),
     )
 
+    # 認識のノードが起動してから動き始める
     return LaunchDescription(args + [
         recognizer,
         viewer,
-        TimerAction(period=LaunchConfiguration('start_delay_sec'), actions=[fill]),
+        TimerAction(period=2.0, actions=[fill]),
     ])

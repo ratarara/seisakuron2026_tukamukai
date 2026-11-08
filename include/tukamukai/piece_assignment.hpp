@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "tukamukai/board_geometry.hpp"
 #include "tukamukai/solver.hpp"
 
 namespace tukamukai
@@ -44,6 +45,16 @@ std::optional<char> kind_from_frame(
 std::optional<std::vector<size_t>> assign_pieces(
   const std::vector<Placement> & solution, const std::vector<DetectedPiece> & detected,
   std::string & error);
+
+// (x, y)（base_link）が、rows × cols マスのケースの中（周りに margin [m] 広げた範囲）にあるか
+bool in_case(
+  double x, double y, const CaseFrame & frame, int rows, int cols, double margin);
+
+// 見つけたピースから、種類 kind で、ケースの外にあるものを 1 つ選ぶ（フレーム名の順で最初のもの）。
+// ケースにすでに置いたピースを、もう一度つかまないようにするため。なければ std::nullopt
+std::optional<size_t> choose_piece(
+  const std::vector<DetectedPiece> & detected, char kind, const CaseFrame & frame, int rows,
+  int cols, double margin);
 
 }  // namespace tukamukai
 
