@@ -1074,6 +1074,32 @@ std::vector<PickSpot> tray_spots(
 // 認識のノードは 1 枚の画像のピースを同じ時刻で出す。画像ごとに番号（piece_L_0 と piece_L_1）が
 // 入れ替わることがあるので、違う画像の tf を混ぜると 2 つが同じピースを指すおそれがある。
 // そのため、同じ時刻の tf だけをまとめて使う（新しい時刻から順に、そろうものを探す）
+// tf にある piece_<種類>_<番号> を、時刻ごとにまとめて読む（max_age_sec 秒より古いものは除く）
+std::map<int64_t, std::vector<tukamukai::DetectedPiece>> read_piece_tf(
+  const rclcpp::Node::SharedPtr & node, const tf2_ros::Buffer & buffer,
+  const std::string & base_frame, const double max_age_sec)
+{
+  std::map<int64_t, std::vector<tukamukai::DetectedPiece>> by_stamp;
+  for (const auto & name : buffer.getAllFrameNames()) {
+    const auto kind = tukamukai::kind_from_frame(name);
+    if (!kind) {continue;}
+    geometry_msgs::msg::TransformStamped t;
+    try {
+      t = buffer.lookupTransform(base_frame, name, tf2::TimePointZero);
+    } catch (const tf2::TransformException &) {
+      continue;
+    }
+    const rclcpp::Time stamp(t.header.stamp, RCL_ROS_TIME);
+    if (stamp.nanoseconds() != 0 && (node->now() - stamp).seconds() > max_age_sec) {
+      continue;
+    }
+    by_stamp[stamp.nanoseconds()].push_back(
+      {*kind, t.transform.translation.x, t.transform.translation.y,
+        tf2::getYaw(t.transform.rotation), name});
+  }
+  return by_stamp;
+}
+
 std::optional<std::vector<PickSpot>> tf_spots(
   const rclcpp::Node::SharedPtr & node, const tf2_ros::Buffer & buffer,
   const std::vector<tukamukai::Placement> & solution, const std::string & base_frame,
@@ -1082,24 +1108,7 @@ std::optional<std::vector<PickSpot>> tf_spots(
   const auto deadline = node->now() + rclcpp::Duration::from_seconds(wait_sec);
   std::string error;
   for (;; ) {
-    std::map<int64_t, std::vector<tukamukai::DetectedPiece>> by_stamp;
-    for (const auto & name : buffer.getAllFrameNames()) {
-      const auto kind = tukamukai::kind_from_frame(name);
-      if (!kind) {continue;}
-      geometry_msgs::msg::TransformStamped t;
-      try {
-        t = buffer.lookupTransform(base_frame, name, tf2::TimePointZero);
-      } catch (const tf2::TransformException &) {
-        continue;
-      }
-      const rclcpp::Time stamp(t.header.stamp, RCL_ROS_TIME);
-      if (stamp.nanoseconds() != 0 && (node->now() - stamp).seconds() > max_age_sec) {
-        continue;
-      }
-      by_stamp[stamp.nanoseconds()].push_back(
-        {*kind, t.transform.translation.x, t.transform.translation.y,
-          tf2::getYaw(t.transform.rotation), name});
-    }
+    const auto by_stamp = read_piece_tf(node, buffer, base_frame, max_age_sec);
     if (by_stamp.empty()) {
       tukamukai::assign_pieces(solution, {}, error);  // 足りないものを error に書くため
     }
@@ -1170,6 +1179,107 @@ bool run_fill_4x4(
     }
   }
   RCLCPP_INFO(logger, "[fill] finished: all %zu pieces placed", moves.size());
+  return true;
+}
+
+// 撮影姿勢（手を真下に向けた姿勢）と、撮り直しの設定
+struct ObserveConfig
+{
+  HandPose observe;        // ピースの置き場を見る姿勢（撮影姿勢 A）
+  HandPose show;           // 置き終わったあと、ケースを見せる姿勢（撮影姿勢 B）
+  bool show_at_end;        // 置き終わったら show の姿勢に動くか
+  double settle_sec;       // 撮影姿勢に着いてから、この時間より後に撮った画像だけを使う [s]
+  double wait_sec;         // 撮影姿勢で、ピースが見つかるまで待つ時間 [s]
+  double case_margin;      // ケースの周りのこの幅 [m] にあるピースは、置いたものとみなしてつかまない
+  double show_hold_sec;    // show の姿勢で止まっている時間 [s]
+};
+
+// 1 個ずつ「撮影姿勢で撮る → 次に置く種類のピースを 1 個つかんで置く」を繰り返す。
+// 毎回撮り直すので、ピースが動いても次の画像の位置を使える。ケースの中のピースはつかまない
+bool run_fill_4x4_observe(
+  PickAndPlace & robot, const rclcpp::Logger & logger, const rclcpp::Node::SharedPtr & node,
+  const tf2_ros::Buffer & buffer, const tukamukai::CaseFrame & frame,
+  const std::vector<tukamukai::Placement> & solution, const ObserveConfig & o,
+  const MotionConfig & c)
+{
+  RCLCPP_INFO(logger, "[fill] solution:\n%s", tukamukai::render(4, 4, solution).c_str());
+  for (size_t i = 0; i < solution.size(); ++i) {
+    const auto & p = solution[i];
+    RCLCPP_INFO(logger, "[fill] ===== piece %zu / %zu : %c =====", i + 1, solution.size(), p.kind);
+
+    // 撮影姿勢へ動き、着いたあとに撮った画像の結果を待つ
+    const auto & a = o.observe;
+    if (!robot.control_arm(a.x, a.y, a.z, a.roll, a.pitch, a.yaw)) {
+      RCLCPP_ERROR(logger, "[fill] could not move to the observation pose");
+      return false;
+    }
+    const auto arrived = node->now();
+    const int64_t min_stamp = (arrived +
+      rclcpp::Duration::from_seconds(o.settle_sec)).nanoseconds();
+    const auto deadline = arrived + rclcpp::Duration::from_seconds(o.settle_sec + o.wait_sec);
+    std::optional<tukamukai::DetectedPiece> chosen;
+    std::vector<tukamukai::DetectedPiece> last_seen;  // 見つからなかったときに表示する
+    bool fresh = false;
+    for (;; ) {
+      // 着いたあとに撮った画像のうち、一番新しいもの
+      const auto by_stamp = read_piece_tf(node, buffer, "base_link", 1e9);
+      if (!by_stamp.empty() && by_stamp.rbegin()->first >= min_stamp) {
+        const auto & detected = by_stamp.rbegin()->second;
+        fresh = true;
+        last_seen = detected;
+        const auto index =
+          tukamukai::choose_piece(detected, p.kind, frame, 4, 4, o.case_margin);
+        if (index) {
+          chosen = detected[*index];
+          break;
+        }
+      }
+      if (node->now() > deadline) {break;}
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    if (!chosen) {
+      RCLCPP_ERROR(
+        logger, "[fill] no %c piece found outside the case within %.1f s. "
+        "Is the recognizer running? Is the piece in view?", p.kind, o.settle_sec + o.wait_sec);
+      if (!fresh) {
+        RCLCPP_ERROR(
+          logger, "[fill]   no tf from images taken after arriving at the observation pose "
+          "(recognizer not running, camera moving, or no piece found in the image)");
+      }
+      for (const auto & d : last_seen) {
+        RCLCPP_ERROR(
+          logger, "[fill]   seen: %s at (%.3f, %.3f) yaw %.0f%s", d.frame.c_str(), d.x, d.y,
+          angles::to_degrees(d.yaw),
+          tukamukai::in_case(d.x, d.y, frame, 4, 4, o.case_margin) ? "  (in the case)" : "");
+      }
+      return false;
+    }
+
+    const auto target = tukamukai::placement_in_robot(p, frame);
+    const PieceMove m{
+      p.kind, chosen->x, chosen->y, angles::to_degrees(chosen->yaw),
+      target.x, target.y, angles::to_degrees(target.yaw)};
+    tukamukai::GraspYaw yaw{};
+    if (!choose_yaw_for(robot, logger, m, c, yaw)) {
+      RCLCPP_ERROR(logger, "[fill] %s is out of reach", chosen->frame.c_str());
+      return false;
+    }
+    RCLCPP_INFO(
+      logger, "[fill] %zu: %c  %s at (%.3f, %.3f) yaw %.0f  ->  place (%.3f, %.3f) yaw %.0f "
+      "(wrist turn %.0f)", i + 1, p.kind, chosen->frame.c_str(), m.pick_x, m.pick_y,
+      m.pick_piece_deg, m.place_x, m.place_y, m.place_piece_deg, yaw.wrist_turn);
+    if (!pick_and_place_piece(robot, logger, m, c, yaw)) {
+      RCLCPP_ERROR(logger, "[fill] stopped at piece %zu (%c)", i + 1, p.kind);
+      return false;
+    }
+  }
+  RCLCPP_INFO(logger, "[fill] finished: all %zu pieces placed", solution.size());
+  if (o.show_at_end) {
+    const auto & s = o.show;
+    if (robot.control_arm(s.x, s.y, s.z, s.roll, s.pitch, s.yaw)) {
+      std::this_thread::sleep_for(std::chrono::duration<double>(o.show_hold_sec));
+    }
+  }
   return true;
 }
 
@@ -1360,6 +1470,22 @@ int main(int argc, char ** argv)
   const std::string piece_source = node->get_parameter_or<std::string>("piece_source", "tray");
   const double tf_wait_sec = node->get_parameter_or<double>("tf_wait_sec", 5.0);
   const double tf_max_age_sec = node->get_parameter_or<double>("tf_max_age_sec", 5.0);
+  // fill_4x4（piece_source:=camera）：撮影姿勢 A（置き場を見る）と B（ケースを見せる）。
+  // 手を真下に向けた姿勢。2026-11-02 に、写る範囲と届くかを Mock で確かめた値（docs/real_robot.md）
+  const ObserveConfig observe_cfg{
+    {node->get_parameter_or<double>("observe_x", 0.29),
+      node->get_parameter_or<double>("observe_y", 0.17),
+      node->get_parameter_or<double>("observe_z", 0.30), -180.0, 0.0,
+      node->get_parameter_or<double>("observe_yaw", -90.0)},
+    {node->get_parameter_or<double>("show_x", 0.31),
+      node->get_parameter_or<double>("show_y", 0.02),
+      node->get_parameter_or<double>("show_z", 0.30), -180.0, 0.0,
+      node->get_parameter_or<double>("show_yaw", -90.0)},
+    node->get_parameter_or<bool>("show_at_end", true),
+    node->get_parameter_or<double>("observe_settle_sec", 1.0),
+    node->get_parameter_or<double>("observe_wait_sec", 5.0),
+    node->get_parameter_or<double>("case_margin", 0.01),
+    node->get_parameter_or<double>("show_hold_sec", 3.0)};
   // tf を受け取り始めるのは時間がかかるので、最初に作っておく
   const auto tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
   const auto tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, node, false);
@@ -1503,18 +1629,27 @@ int main(int argc, char ** argv)
       case_x, case_y, 0.0, angles::from_degrees(case_yaw_deg), tukamukai::kDefaultCellSize};
     const auto solution = tukamukai::solve(4, 4, {{'I', 1}, {'S', 1}, {'L', 2}});
     std::optional<std::vector<PickSpot>> spots;
+    const bool use_camera = (piece_source == "camera");
     if (!solution) {
       RCLCPP_ERROR(logger, "[fill] no solution for 4x4 with I, S, L, L");
+    } else if (use_camera) {
+      // 1 個ごとに撮影姿勢で撮り直す（下の run_fill_4x4_observe）
     } else if (piece_source == "tray") {
       spots = tray_spots(solution->size(), tray_x, tray_y, tray_dx, tray_dy, tray_piece_deg);
     } else if (piece_source == "tf") {
       spots = tf_spots(
         node, *tf_buffer, *solution, "base_link", tf_wait_sec, tf_max_age_sec, logger);
     } else {
-      RCLCPP_ERROR(logger, "[fill] unknown piece_source: %s (tray / tf)", piece_source.c_str());
+      RCLCPP_ERROR(
+        logger, "[fill] unknown piece_source: %s (tray / tf / camera)", piece_source.c_str());
     }
-    ok = spots.has_value() &&
-      run_fill_4x4(controller, logger, frame, *solution, *spots, piece_source == "tray", motion);
+    if (use_camera) {
+      ok = solution.has_value() && run_fill_4x4_observe(
+        controller, logger, node, *tf_buffer, frame, *solution, observe_cfg, motion);
+    } else {
+      ok = spots.has_value() &&
+        run_fill_4x4(controller, logger, frame, *solution, *spots, piece_source == "tray", motion);
+    }
     keep_gripper = true;
   } else if (keep_start) {
     ok = run_lift_place(controller, logger, lift_dz, lift_speed, gripper_open_deg);

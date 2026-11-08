@@ -176,6 +176,82 @@ ros2 launch tukamukai pick_place.launch.py mode:=fill_4x4 piece_source:=tf step_
 | `tf_wait_sec` | 5.0 | ピースがそろうまで待つ時間 [s] |
 | `tf_max_age_sec` | 5.0 | これより古い tf は使わない [s] |
 
+認識のノードは 1 枚の画像のピースを **同じ時刻** で出します。画像ごとに `piece_L_0` と `piece_L_1` の番号が入れ替わることがあるので、`fill_4x4` は同じ時刻の tf だけをまとめて使います（違う画像の tf を混ぜると、2 つが同じピースを指すおそれがある）。
+
+#### 認識のノード `piece_tf_node.py`
+
+色でピースを見つけ、上の決まりで tf を出すノードです。色の範囲と切り出し方は堀さんの `perception/scripts/colorecog` と同じ（オレンジ＝L、緑＝S、青＝I）、角度は [piece_angle.md](piece_angle.md) と同じ方法です。
+
+```bash
+# ターミナル1：実機とカメラ（use_d435:=true が必要。カメラの位置の tf が出る）
+ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0 use_d435:=true
+# ターミナル2：認識のノード
+ros2 run tukamukai piece_tf_node.py
+# ターミナル3：見つけたピースと角度を描いた画像を見る
+ros2 run rqt_image_view rqt_image_view /piece_tf_node/image
+# ターミナル4：アームを撮影姿勢にして止めてから、敷き詰める
+ros2 launch tukamukai pick_place.launch.py mode:=fill_4x4 piece_source:=tf step_by_step:=true speed_scale:=0.3
+```
+
+- 位置は、取っ手を通るカメラの視線と、ピースの上面の高さ（`plane_z`、初期値 0.005 m）の平面との交点です（深度は使わない）
+- **カメラが動いている間（0.3 秒前から 2 mm または 1° 以上動いた画像）は tf を出しません。** 画像の左上に `camera moving` と出ます
+- 画像の端に触れているピースや、形がよく重ならない（0.8 未満）ピースは出しません
+
+| 引数（`--ros-args -p 名前:=値`） | 初期値 | 内容 |
+|---|---|---|
+| `image_topic` | /camera/color/image_raw | カラー画像（カメラ単体で起動したときは /camera/camera/color/image_raw） |
+| `camera_info_topic` | /camera/color/camera_info | カメラの情報 |
+| `plane_z` | 0.005 | ピースの上面の高さ [m]（base_link から） |
+| `min_score` | 0.8 | 形の重なりがこれより小さいピースは出さない |
+| `still_window_sec` `still_tolerance_m` `still_tolerance_deg` | 0.3, 0.002, 1.0 | 止まっているとみなす条件 |
+
+**確かめたこと（Mock）**：録画（2026-10-26）を流し、仮のカメラの位置（前 25 cm・高さ 35 cm から真下）と D435 の標準的なカメラの情報を与えて、`fill_4x4`（`piece_source:=tf`）で 4 ピースとも最後まで通った。実機ではまだ試していない。
+
+#### 中間発表のデモ（1 つのコマンドで、撮り直しながら）
+
+当日の手順と確認項目は [demo_midterm.md](demo_midterm.md) にまとめてあります。
+
+`demo_4x4.launch.py` で、認識のノード・確認用の画像・`fill_4x4`（`piece_source:=camera`）をまとめて起動します。**Enter なしで通しで動きます。**
+
+```bash
+# ターミナル1：実機とカメラ
+ros2 launch crane_x7_examples demo.launch.py port_name:=/dev/ttyUSB0 use_d435:=true
+# ターミナル2：デモ
+ros2 launch tukamukai demo_4x4.launch.py
+```
+
+`piece_source:=camera` では、1 個ごとに次を繰り返します。
+
+1. **撮影姿勢 A**（手を真下に向けて、置き場を見る）へ動く
+2. 止まってから撮った画像（着いてから `observe_settle_sec` = 1 秒より後）で、次に置く種類のピースを探す。**ケースの中（周り 1 cm を含む）のピースは、置いたものとみなしてつかまない**
+3. そのピースをつかんで、置く向きまで手首を回して置く
+
+置き終わったら **撮影姿勢 B**（ケースを見る）で 3 秒止まってから、ホーム姿勢に戻ります。毎回撮り直すので、ピースが少し動いても次の画像の位置を使えます。RViz で撮影姿勢にしておく必要はありません。
+
+撮影姿勢は [config/observation_pose.yaml](../config/observation_pose.yaml) にあります（2026-11-08、実物の D435 の画角で計算し、Mock で届くことを確認）。
+
+| 姿勢 | ハンド（真下向き） | 写る範囲 |
+|---|---|---|
+| A：置き場 | x 0.29・y 0.17・高さ 0.30 m | 前 0.14〜0.35 m × 左 0.00〜0.28 m |
+| B：ケース | x 0.31・y 0.02・高さ 0.30 m | 前 0.16〜0.37 m × 左 -0.15〜0.13 m |
+
+**ピースは置き場（前 0.17〜0.31 m × 左 0.09〜0.23 m）に詰めて置きます。** 画像の端に触れたピースは認識しません。
+
+| 引数 | 初期値 | 内容 |
+|---|---|---|
+| `step_by_step` | false | true にすると 1 動作ずつ Enter で確かめる（xterm が開く） |
+| `speed_scale` | 0.3 | 速さ |
+| `view` | true | 確認用の画像を出す |
+| `observe_x` `observe_y` `observe_z` | 0.29, 0.17, 0.30 | 撮影姿勢 A のハンドの位置 [m] |
+| `show_x` `show_y` `show_z` `show_at_end` | 0.31, 0.02, 0.30, true | 撮影姿勢 B と、最後に B へ動くか |
+| `observe_wait_sec` | 5.0 | 撮影姿勢 A で、次のピースが見つかるまで待つ時間 [s] |
+| `plane_z` | 0.005 | ピースの上面の高さ [m] |
+| `case_x` `case_y` `case_yaw_deg` | 0.22, -0.04, 0 | ケースの角の位置と向き |
+
+ピースが見つからずに止まったときは、最後に見えていたピースの一覧（位置と、ケースの中とみなしたか）が表示されます。
+
+**確かめたこと（Mock、2026-11-08）**：ロボットのモデルから計算したカメラの位置（実測したハンドとカメラの関係）と実測の画角を使い、録画（2026-10-26）の画像の時刻を今に付け替えて流した。`demo_4x4.launch.py` で 4 ピースとも、撮り直しながら最後まで置けた（速さ 1.0 で約 150 秒）。実機ではまだ試していない。
+
 ## 5. 終了する
 
 1. **アームを手で支える**

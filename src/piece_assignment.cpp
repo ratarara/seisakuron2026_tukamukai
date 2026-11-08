@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <map>
 #include <numeric>
 
@@ -66,6 +67,32 @@ std::optional<std::vector<size_t>> assign_pieces(
     order.push_back(by_kind[p.kind][used[p.kind]++]);
   }
   return order;
+}
+
+bool in_case(double x, double y, const CaseFrame & frame, int rows, int cols, double margin)
+{
+  // ケース座標（x 軸＝行が増える向き、y 軸＝列が増える向き）に直す
+  const double dx = x - frame.x;
+  const double dy = y - frame.y;
+  const double c = std::cos(frame.yaw);
+  const double s = std::sin(frame.yaw);
+  const double u = c * dx + s * dy;
+  const double v = -s * dx + c * dy;
+  return u >= -margin && u <= rows * frame.cell_size + margin &&
+         v >= -margin && v <= cols * frame.cell_size + margin;
+}
+
+std::optional<size_t> choose_piece(
+  const std::vector<DetectedPiece> & detected, char kind, const CaseFrame & frame, int rows,
+  int cols, double margin)
+{
+  std::optional<size_t> best;
+  for (size_t i = 0; i < detected.size(); ++i) {
+    const auto & d = detected[i];
+    if (d.kind != kind || in_case(d.x, d.y, frame, rows, cols, margin)) {continue;}
+    if (!best || d.frame < detected[*best].frame) {best = i;}
+  }
+  return best;
 }
 
 }  // namespace tukamukai

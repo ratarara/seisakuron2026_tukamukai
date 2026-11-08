@@ -1,18 +1,28 @@
-# 撮影姿勢（#47）：カメラを真下に向けて、4×4 の置き場とケースを全部写す姿勢。
-# IK で計算した値。実機のカメラではまだ確かめていない（2026-11-02）。
+# 撮影姿勢（#47）：カメラを真下に向けて、ピースの置き場を写す姿勢（fill_4x4 の piece_source:=camera で使う）。
 #
-# カメラの位置：x = 0.240, y = 0.100, 高さ 0.26 m（真下向き。画像の長辺が左右）
-# 写る範囲：前後 200 mm × 左右 357 mm（D435 のカラー 69° × 42° からの計算）
-# 写したい範囲：前後 120 mm × 左右 280 mm（配置図 docs/fill_4x4_layout.png）
-# 高さ 0.30 m 以上は、手首の上下の関節（-90° まで）が届かず解がない
+# 2026-11-08 に、実物の D435 から取った画角で計算し直し、Mock で届くことを確かめた（実機は未確認）。
+# - デモで使う 640×480 のカラー画像の画角は 横 54.6° × 縦 42.3°（camera_info の fx = 619.4 から）。
+#   はじめは 69° × 42°（16:9 の画像の値）で計算していたため、写る範囲を広く見積もっていた
+# - 手を真下に向けて届くのは、高さ 0.30 m くらいまで。この高さでは、置き場とケースを 1 つの姿勢で
+#   全部は写せない。ケースに置いたピースは in_case でつかむ候補から外すので、置き場だけを写す
+#
+# カメラの位置：x = 0.245, y = 0.138, 高さ 0.27 m（画像の下＝ロボットの前、画像の右＝ロボットの左）
+# 写る範囲：前 0.14〜0.35 m × 左 0.00〜0.28 m
+# 置き場：前 0.15〜0.33 m × 左 0.07〜0.26 m なら余裕 9 mm、前 0.17〜0.31 m × 左 0.09〜0.23 m に
+#         詰めれば余裕 29 mm（画像の端に触れたピースは認識しないので、詰めて置く）
 observation_pose:
-  hand_xyz: [0.285, 0.132, 0.290]  # 手首の付け根の位置 [m]
-  hand_rpy_deg: [-180.0, 0.0, -90.0]  # 手を真下に向ける
-  joints_deg:
-    crane_x7_shoulder_fixed_part_pan_joint: 19.0
-    crane_x7_shoulder_revolute_part_tilt_joint: -15.6
-    crane_x7_upper_arm_revolute_part_twist_joint: 7.5
-    crane_x7_upper_arm_revolute_part_rotate_joint: -83.0
-    crane_x7_lower_arm_fixed_part_joint: -2.0
-    crane_x7_lower_arm_revolute_part_joint: -81.5
-    crane_x7_wrist_joint: -63.5
+  hand_xyz: [0.29, 0.17, 0.30]  # 手首の付け根の位置 [m]（observe_x, observe_y, observe_z）
+  hand_rpy_deg: [-180.0, 0.0, -90.0]  # 手を真下に向ける（observe_yaw = -90）
+  joints_deg:  # Mock で動かしたときの関節の角度（参考）
+    crane_x7_shoulder_fixed_part_pan_joint: 50.0
+    crane_x7_shoulder_revolute_part_tilt_joint: -22.0
+    crane_x7_upper_arm_revolute_part_twist_joint: -29.0
+    crane_x7_upper_arm_revolute_part_rotate_joint: -74.0
+    crane_x7_lower_arm_fixed_part_joint: 10.0
+    crane_x7_lower_arm_revolute_part_joint: -86.0
+    crane_x7_wrist_joint: -67.0
+
+# 置き終わったあとにケースを見せる姿勢（show_x, show_y, show_z）。写る範囲：前 0.16〜0.37 m × 左 -0.15〜0.13 m
+show_pose:
+  hand_xyz: [0.31, 0.02, 0.30]
+  hand_rpy_deg: [-180.0, 0.0, -90.0]

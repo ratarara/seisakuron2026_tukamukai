@@ -85,3 +85,31 @@ TEST(AssignPieces, IgnoresExtraPieces)
   ASSERT_TRUE(order.has_value()) << error;
   EXPECT_EQ(*order, (std::vector<size_t>{0, 2}));
 }
+
+TEST(InCase, ChecksRotatedCase)
+{
+  // ケースの角 (0.22, -0.04)、向き 0、4×4（1 マス 20 mm）：前 0.22〜0.30、左右 -0.04〜0.04
+  const tukamukai::CaseFrame frame{0.22, -0.04, 0.0, 0.0, 0.020};
+  EXPECT_TRUE(tukamukai::in_case(0.26, 0.0, frame, 4, 4, 0.0));
+  EXPECT_FALSE(tukamukai::in_case(0.26, 0.05, frame, 4, 4, 0.0));
+  EXPECT_TRUE(tukamukai::in_case(0.26, 0.045, frame, 4, 4, 0.01));  // 周り 1 cm は中とみなす
+  EXPECT_FALSE(tukamukai::in_case(0.21, 0.0, frame, 4, 4, 0.0));
+  // 90° 回したケース：行は +y、列は -x に増える
+  const tukamukai::CaseFrame turned{0.30, 0.0, 0.0, 3.14159265358979 / 2, 0.020};
+  EXPECT_TRUE(tukamukai::in_case(0.27, 0.04, turned, 4, 4, 0.0));
+  EXPECT_FALSE(tukamukai::in_case(0.27, -0.01, turned, 4, 4, 0.0));
+}
+
+TEST(ChoosePiece, SkipsPiecesInCaseAndOtherKinds)
+{
+  const tukamukai::CaseFrame frame{0.22, -0.04, 0.0, 0.0, 0.020};
+  const std::vector<DetectedPiece> detected{
+    {'L', 0.26, 0.00, 0.0, "piece_L_0"},   // ケースの中（置いたもの）
+    {'S', 0.25, 0.15, 0.0, "piece_S_0"},
+    {'L', 0.28, 0.20, 0.0, "piece_L_2"},
+    {'L', 0.20, 0.15, 0.0, "piece_L_1"},
+  };
+  EXPECT_EQ(tukamukai::choose_piece(detected, 'L', frame, 4, 4, 0.01), 3u);  // L_1（名前の順）
+  EXPECT_EQ(tukamukai::choose_piece(detected, 'S', frame, 4, 4, 0.01), 1u);
+  EXPECT_FALSE(tukamukai::choose_piece(detected, 'I', frame, 4, 4, 0.01).has_value());
+}
