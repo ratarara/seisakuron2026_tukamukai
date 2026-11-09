@@ -1011,6 +1011,9 @@ struct MotionConfig
   double hand_offset_deg;  // 手の向き - ピースの向き [deg]
   double planar_tol_deg;   // 腕を平らな形にするときの、ねじりの許容 [deg]
   CompConfig comp;
+  // つかむために下ろすときの手の傾きの目標 [deg]。指先が前（+x）へ傾くと正。実機では、
+  // 水平を目標にしても指先が下がって本体を掴んだので（#80）、わざと傾けた向きを目標にする
+  double grasp_tilt_front_deg;
 };
 
 // 手の向きを選ぶ（腕は動かさない）。届く候補がなければ false
@@ -1072,6 +1075,15 @@ bool pick_and_place_piece(
       return step(
         robot.move_hand_compensated(to_pose(to), c.speed, c.comp, offset, logger, what), what);
     };
+  // つかむために下ろすときだけ、手を grasp_tilt_front_deg だけ傾けた向きを目標にする
+  // （base_link の y 軸まわりに +θ 回すと、指先は後ろへ θ 傾く）
+  const auto compensated_tilted = [&](const HandPose & to, Offset & offset, const char * what) {
+      geometry_msgs::msg::Pose target = to_pose(to);
+      target.orientation = tilt_orientation(
+        target.orientation, 0.0, angles::from_degrees(-c.grasp_tilt_front_deg));
+      return step(
+        robot.move_hand_compensated(target, c.speed, c.comp, offset, logger, what), what);
+    };
   return
     // 真上へは、腕を「平らな形」（ねじりがほぼ 0）にして移動する。左右へ運ぶとき、
     // ねじりの関節が制限に当たって途中で止まらないように（move_arm_planar）
@@ -1083,7 +1095,7 @@ bool pick_and_place_piece(
     robot.correct_position(to_pose(above), c.speed, c.comp, at_pick, logger, "above the piece"),
     "correct above the piece") &&
     step(robot.move_gripper_angle(angles::from_degrees(c.pick_open_deg)), "open") &&
-    compensated(pick, at_pick, "go down") &&
+    compensated_tilted(pick, at_pick, "go down") &&
     step(robot.move_gripper_angle(angles::from_degrees(c.grasp_deg)), "grasp") &&
     straight(above, "lift") &&
     compensated(place_above_before_turn, at_place, "move sideways") &&
@@ -1291,10 +1303,26 @@ bool run_fill_4x4_observe(
         const auto & detected = by_stamp.rbegin()->second;
         fresh = true;
         last_seen = detected;
+        // 同じ種類が 2 個以上あるとき（L）、手首が届く向きのものを選ぶ。番号だけで選ぶと、
+        // 置く向きと 180° 違う L を選んで、手首が回りきらずに止まることがある
         const auto index =
           tukamukai::choose_piece(detected, p.kind, frame, 4, 4, o.case_margin);
         if (index) {
           chosen = detected[*index];
+          const auto target = tukamukai::placement_in_robot(p, frame);
+          for (const auto & d : detected) {
+            if (d.kind != p.kind || tukamukai::in_case(d.x, d.y, frame, 4, 4, o.case_margin)) {
+              continue;
+            }
+            const PieceMove trial{
+              p.kind, d.x, d.y, angles::to_degrees(d.yaw),
+              target.x, target.y, angles::to_degrees(target.yaw)};
+            tukamukai::GraspYaw trial_yaw{};
+            if (choose_yaw_for(robot, logger, trial, c, trial_yaw)) {
+              chosen = d;
+              break;
+            }
+          }
           break;
         }
       }
@@ -1557,7 +1585,7 @@ int main(int argc, char ** argv)
   // 置いて離すときの指の角度。4×4 ではとなりの取っ手まで約 25 mm しかないので、大きく開かない
   // （20° だと片側約 24 mm 開き、当たる。5° なら片側約 6 mm）
   const double fill_place_open_deg = node->get_parameter_or<double>("fill_place_open_deg", 5.0);
-  const double fill_release_dz = node->get_parameter_or<double>("fill_release_dz", 0.003);
+  const double fill_release_dz = node->get_parameter_or<double>("fill_release_dz", 0.007);
   CompConfig comp;
   comp.enabled = node->get_parameter_or<bool>("comp_enabled", true);
   comp.tol = node->get_parameter_or<double>("comp_tol_mm", 1.0) / 1000.0;
@@ -1605,7 +1633,7 @@ int main(int argc, char ** argv)
   const HandPose PICK{
     node->get_parameter_or<double>("pick_x", 0.25),
     node->get_parameter_or<double>("pick_y", 0.0),
-    node->get_parameter_or<double>("pick_z", 0.105),
+    node->get_parameter_or<double>("pick_z", 0.089),
     -180.0, 0.0,
     node->get_parameter_or<double>("pick_yaw", -90.0)};
 
@@ -1615,7 +1643,8 @@ int main(int argc, char ** argv)
   // pick_move・fill_4x4 で共通の設定
   const MotionConfig motion{
     PICK.z, fill_release_dz, fill_lift_dz, lift_speed, pick_grasp_deg, gripper_open_deg,
-    fill_place_open_deg, hand_offset_deg, planar_tol_deg, comp};
+    fill_place_open_deg, hand_offset_deg, planar_tol_deg, comp,
+    node->get_parameter_or<double>("grasp_tilt_front_deg", -1.5)};
 
   // lift_place モードは、今の姿勢とグリッパのまま始める（home に戻らない）
   const bool keep_start = (mode == "lift_place");
