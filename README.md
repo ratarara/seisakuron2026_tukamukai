@@ -1,5 +1,7 @@
 # つかむ会（seisakuron2026_tukamukai）
 
+[![build and test](https://github.com/ratarara/seisakuron2026_tukamukai/actions/workflows/build_and_test.yml/badge.svg)](https://github.com/ratarara/seisakuron2026_tukamukai/actions/workflows/build_and_test.yml)
+
 千葉工業大学 未来ロボティクス学科「ロボット設計製作論実習3（2026年度 知能コース）」のチーム「つかむ会」のリポジトリです。
 
 ## 概要
@@ -138,10 +140,14 @@ ros2 launch tukamukai solver_viz.launch.py preset:=8x8  # 8×8
 ```
 seisakuron2026_tukamukai/
 ├── README.md              # このファイル
+├── LICENSE                # ライセンス（Apache-2.0）
+├── NOTICE                 # 著作権の表示
 ├── CLAUDE.md              # Claude Code 向けのプロジェクトメモ
 ├── .gitignore             # Git で管理しないファイルの一覧
 ├── package.xml            # ROS 2 パッケージの情報と依存関係
 ├── CMakeLists.txt         # ビルドの設定
+├── .github/workflows/
+│   └── build_and_test.yml  # PR のたびにビルドとテストを自動で行う
 ├── include/
 │   └── tukamukai/
 │       ├── solver.hpp     # ソルバーのヘッダ（使い方の説明つき）
@@ -184,6 +190,8 @@ seisakuron2026_tukamukai/
 |---|---|---|
 | `README.md` | リポジトリの説明書 | 概要・セットアップ・使い方・ルールをまとめたもの。GitHub のトップに表示される。手順や構成が変わったら更新する |
 | `CLAUDE.md` | Claude Code 向けのメモ | やりたいこと、処理の流れ、ソルバーの制約、ハードの案、開発ルール、TODO。Claude Code が作業前に読む。方針が決まったら更新する |
+| `LICENSE` | ライセンスの本文 | Apache License 2.0。誰でも使う・改変する・配ることができる。そのとき、著作権の表示（`NOTICE`）とライセンスを残し、変えたファイルには変えたことを書く |
+| `NOTICE` | 著作権の表示 | 著作権者（つかむ会と 4 人の名前）。コードを流用した人は、これを一緒に残す |
 | `docs/ros2_setup.md` | ROS 2 環境構築手順 | 何も入っていない Ubuntu 24.04 に ROS 2 Jazzy の開発環境を作る手順。新しいメンバーや PC の再インストール時に使う |
 | `docs/recognition_without_camera.md` | カメラなしで認識を作る手順 | RealSense で rosbag を記録し、その記録と写真で HSV のしきい値・輪郭・ロボットの座標への変換を作る。カメラを使える時間が限られているときに使う |
 
@@ -194,6 +202,7 @@ seisakuron2026_tukamukai/
 | `package.xml` | パッケージの情報 | 名前・説明・管理者・ライセンス・依存パッケージ（`rclcpp`、`realsense2_camera` など）。`rosdep install` はここを見て必要なものを入れる。**新しいパッケージを使うときは依存を追加する** |
 | `CMakeLists.txt` | ビルドの設定 | どのファイルをコンパイルして、何をインストールするかを書く。**ノードを作ったら `add_executable` と `install(TARGETS ...)` に追加する**（追加しないと `ros2 run` で起動できない）。使うパッケージは `find_package` と `ament_target_dependencies` にも書く |
 | `.gitattributes` | Git でのファイルの扱い | STL や STEP などの CAD データを、PR で差分表示しないようにする |
+| `.github/workflows/build_and_test.yml` | 自動テスト（GitHub Actions） | PR を出したときと main に入ったときに、GitHub がビルドとテストを自動で行う。結果は PR の下と「Actions」タブに出て、README の一番上のバッジが緑なら通っている。**赤（失敗）のときはマージしない** |
 | `.gitignore` | Git の除外設定 | ビルドで生成される `build/` `install/` `log/`、動画や rosbag などの大きいファイルをコミットしないようにする |
 
 **プログラム**（C++17）
@@ -231,7 +240,6 @@ seisakuron2026_tukamukai/
 
 | 場所 | 中身 |
 |---|---|
-| `LICENSE` | ライセンス（種類は未定） |
 | `docs/notes/` | 調査メモ |
 | `docs/minutes/YYYY-MM-DD.md` | 議事録と決定事項（判断の理由も） |
 | `docs/troubleshooting.md` | つまずいたことと解決方法 |
@@ -258,9 +266,10 @@ Milestone は3回の発表に対応しています。
 
 ## ライセンス・謝辞
 
+- 本リポジトリは [Apache License 2.0](LICENSE) で公開しています。著作権の表示は [NOTICE](NOTICE) にあります。後輩やほかのチームも、ライセンスに従って自由に使ってかまいません
 - 本リポジトリは以下を利用しています。
   - [rt-net/crane_x7_ros](https://github.com/rt-net/crane_x7_ros)：Apache License 2.0
   - [rt-net/crane_x7_description](https://github.com/rt-net/crane_x7_description)：RT社の独自ライセンス（[LICENSE](https://github.com/rt-net/crane_x7_description/blob/HEAD/LICENSE)）。研究開発目的での使用は許諾されていますが、商業目的での使用には RT社への問い合わせが必要です
 - 先輩のコードを参考・流用した場合は、ここに元リポジトリとライセンスを記載する。
 
-© 2026 つかむ会
+© 2026 つかむ会（比屋根佳歩、石川奈々美、堀円香、キンジュンウ）

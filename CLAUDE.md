@@ -91,6 +91,8 @@ colcon test --packages-select tukamukai && colcon test-result --verbose
 
 ## 開発ルール
 
+- ライセンスは **Apache-2.0**（`LICENSE`、著作権の表示は `NOTICE`、2026-11-09 決定）
+- PR と main への push のたびに、GitHub Actions（`.github/workflows/build_and_test.yml`）が `ros:jazzy-ros-base` の上でビルドと `colcon test` を行う。crane_x7_* と realsense2_camera は rosdep で入らない・起動にしか使わないので飛ばしている。ビルドに新しい依存を足すときは、rosdep で入るか確かめる
 - `main` に直接 push しない。作業ごとに `feature/<内容>` ブランチを切って PR でマージ
 - PR の説明に `Closes #<Issue番号>` を書いて Issue と紐づける
 - Issue は1回の講義で終わるサイズに切る。ラベル：認識／ソルバー／動作計画／ハード／調査／バグ
@@ -113,7 +115,8 @@ colcon test --packages-select tukamukai && colcon test-result --verbose
 - 全体が CRANE-X7 の作業範囲とカメラ画角に収まるか（1マスは 20mm に決定済み。8×8 のケース内寸は 160mm）
 - 取っ手の形と位置（J・L は重心が角に寄っていて、重心を中心にした土台は 10mm 角まで。#13）
 - ピースの種類ごとの個数（T は偶数。T なしなら J+L も偶数）
-- メンバーの担当、Backlog の URL、中間・最終発表の日程、LICENSE の種類（README に TODO として残っている）
+- メンバーの担当、Backlog の URL、中間・最終発表の日程（README に TODO として残っている）
 - 先輩のリポジトリをベースにする場合、元リポジトリ・ライセンス・差分を README に記載
 - `.gitignore` がまだない（`build/` `install/` `log/` を入れる）
-- 余裕があれば：GitHub Actions でテストを自動実行、認識結果と解の画面表示（デモ用）
+- 余裕があれば：認識結果と解の画面表示（デモ用）
+- 著作権表示のチェック（ament_copyright）はスキップ中。全ファイルの先頭に Apache-2.0 の著作権表示を入れたら、CMakeLists.txt のスキップを外す

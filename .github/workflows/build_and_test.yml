@@ -1,0 +1,42 @@
+# PR と main への push のたびに、ビルドとテスト（gtest と lint）を自動で行う
+# 手元で同じことをするには README の「テスト」の項を見る
+name: build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-24.04
+    container: ros:jazzy-ros-base
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ros2_ws/src/tukamukai
+
+      # crane_x7_* は rosdep で入らず、realsense2_camera も起動にしか使わないので、
+      # ビルドとテストに要らないものは飛ばす
+      - name: 依存パッケージのインストール
+        run: |
+          apt-get update
+          rosdep update --rosdistro jazzy
+          rosdep install -y -i --from-paths ros2_ws/src --rosdistro jazzy \
+            --skip-keys "crane_x7_description crane_x7_moveit_config realsense2_camera"
+
+      - name: ビルド
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          cd ros2_ws
+          colcon build --packages-select tukamukai
+
+      - name: テスト
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          cd ros2_ws
+          colcon test --packages-select tukamukai --event-handlers console_direct+
+          colcon test-result --verbose
