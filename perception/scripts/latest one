@@ -1,0 +1,606 @@
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+import cv2
+import numpy as np
+
+# 形状認識
+
+TETROMINOES = {
+    "I-TYPE": [
+        [1, 1, 1, 1]
+    ],
+
+    "L-TYPE": [
+        [1, 0],
+        [1, 0],
+        [1, 1]
+    ],
+
+    "Z-TYPE": [
+        [0, 1, 1],
+        [1, 1, 0]
+    ],
+}
+
+
+def trim_grid(grid):
+    """空白の行と列を取り除く"""
+
+    grid = np.array(grid, dtype=np.uint8)
+
+    rows = np.where(np.any(grid, axis=1))[0]
+    cols = np.where(np.any(grid, axis=0))[0]
+
+    if len(rows) == 0 or len(cols) == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
+
+    return grid[
+        rows[0]:rows[-1] + 1,
+        cols[0]:cols[-1] + 1
+    ]
+
+
+def grid_key(grid):
+    """マス目を比較用の文字列に変換"""
+
+    return tuple(
+        ''.join(str(int(v)) for v in row)
+        for row in grid
+    )
+
+
+def classify_tetromino(contour):
+    #輪郭からテトリス形状を判定する
+
+    x, y, w, h = cv2.boundingRect(contour)
+
+    if w <= 0 or h <= 0:
+        return "UNKNOWN"
+
+    # 輪郭の内部を白く塗りつぶす
+    mask = np.zeros((h, w), dtype=np.uint8)
+
+    shifted = contour.copy()
+    shifted[:, :, 0] -= x
+    shifted[:, :, 1] -= y
+
+    cv2.drawContours(
+        mask,
+        [shifted],
+        -1,
+        255,
+        -1
+    )
+
+    filled_area = cv2.countNonZero(mask)
+
+    # テトリスは4マスで構成されると仮定
+    cell_size = np.sqrt(filled_area / 4.0)
+
+    if cell_size < 2:
+        return "UNKNOWN"
+
+    cols = max(1, round(w / cell_size))
+    rows = max(1, round(h / cell_size))
+
+    # 正方形のマス目として成立するか確認
+    cell_w = w / cols
+    cell_h = h / rows
+
+    if abs(cell_w - cell_h) / max(cell_w, cell_h) > 0.35:
+        return "OTHER"
+
+    grid = []
+
+    # 各マスに物体が存在するか確認
+    for row in range(rows):
+
+        grid_row = []
+
+        for col in range(cols):
+
+            x1 = round(col * cell_w)
+            x2 = round((col + 1) * cell_w)
+
+            y1 = round(row * cell_h)
+            y2 = round((row + 1) * cell_h)
+
+            cell = mask[y1:y2, x1:x2]
+
+            if cell.size == 0:
+                grid_row.append(0)
+                continue
+
+            occupancy = (
+                cv2.countNonZero(cell) / cell.size
+            )
+
+            grid_row.append(
+                1 if occupancy >= 0.45 else 0
+            )
+
+        grid.append(grid_row)
+
+    grid = trim_grid(grid)
+
+    if grid.size == 0:
+        return "UNKNOWN"
+
+    # 登録された3種類と比較
+    for shape_name, template in TETROMINOES.items():
+
+        template = np.array(
+            template,
+            dtype=np.uint8
+        )
+
+        # 回転・反転も考慮
+        for mirrored in [False, True]:
+
+            candidate = template.copy()
+
+            if mirrored:
+                candidate = np.fliplr(candidate)
+
+            for _ in range(4):
+
+                candidate = trim_grid(candidate)
+
+                if grid_key(candidate) == grid_key(grid):
+                    return shape_name
+
+                candidate = np.rot90(candidate)
+
+    return "OTHER"
+
+
+
+class ColorObjectDetector(Node):
+
+    def __init__(self):
+        super().__init__('color_object_detector')
+
+        self.bridge = CvBridge()
+        self.depth_image = None
+
+        # カメラの内部パラメータ
+
+#Noneはカメラの焦点距離
+#[ros2 topic echo --once /camera/camera/color/camera_info]で数値を得る
+#上から順に１番目５番目３番目６番目の値を使う
+        self.fx = None   # 水平方向の焦点距離
+        self.fy = None   # 垂直方向の焦点距離
+        self.cx = None   # 画像中心の横座標 (ppx)
+        self.cy = None   # 画像中心の縦座標 (ppy)
+
+        # 前のフレームのマスクを保存
+        self.previous_masks = {}
+
+        # カラー画像の取得
+        self.subscription = self.create_subscription(
+            Image,
+            '/camera/camera/color/image_raw',
+            self.image_callback,
+            10
+        )
+
+        # 深度画像の取得
+        self.depth_subscription = self.create_subscription(
+            Image,
+            '/camera/camera/depth/image_rect_raw',
+            self.depth_callback,
+            10
+        )
+
+        # 色の設定（HSV）
+        self.colors = {
+            'ORANGE': [
+                ([5, 100, 100], [25, 255, 255])
+            ],
+            'GREEN': [
+                ([30, 50, 40], [90, 255, 255])
+            ],
+            'BLUE': [
+                ([90, 70, 50], [130, 255, 255])
+            ]
+        }
+
+        self.get_logger().info(
+            'Color object detector started'
+        )
+
+    # 深度画像の取得
+
+    def depth_callback(self, msg):
+
+        self.depth_image = self.bridge.imgmsg_to_cv2(
+            msg,
+            desired_encoding='passthrough'
+        )
+
+    # 深度を取得する関数
+
+    def get_depth(
+        self,
+        pixel_x,
+        pixel_y,
+        color_width,
+        color_height
+    ):
+
+        if self.depth_image is None:
+            return None
+
+        depth_h, depth_w = self.depth_image.shape[:2]
+
+        # カラー画像と深度画像のサイズを換算
+        dx = int(pixel_x * depth_w / color_width)
+        dy = int(pixel_y * depth_h / color_height)
+
+        dx = min(max(dx, 0), depth_w - 1)
+        dy = min(max(dy, 0), depth_h - 1)
+
+        # 周囲の深度データを取得
+        search_size = 5
+
+        x1 = max(0, dx - search_size)
+        x2 = min(depth_w, dx + search_size + 1)
+
+        y1 = max(0, dy - search_size)
+        y2 = min(depth_h, dy + search_size + 1)
+
+        region = self.depth_image[y1:y2, x1:x2]
+
+        valid_depth = region[
+            (region > 0) & np.isfinite(region)
+        ]
+
+        if len(valid_depth) == 0:
+            return None
+
+        # 16UC1の場合はmmからmに変換
+        if self.depth_image.dtype == np.uint16:
+            distance_m = np.median(valid_depth) / 1000.0
+
+        # 32FC1の場合はmとして扱う
+        else:
+            distance_m = np.median(valid_depth)
+
+        return float(distance_m)
+
+    # カラー画像の処理
+
+    def image_callback(self, msg):
+
+        white_info = []
+
+        frame = self.bridge.imgmsg_to_cv2(
+            msg,
+            desired_encoding='bgr8'
+        )
+
+        hsv = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2HSV
+        )
+
+        height, width = frame.shape[:2]
+
+        center_x = width // 2
+        center_y = height // 2
+
+        # 画面中央に赤い点
+        cv2.circle(
+            frame,
+            (center_x, center_y),
+            6,
+            (0, 0, 255),
+            -1
+        )
+
+        kernel = np.ones((5, 5), np.uint8)
+
+        # 色ごとの物体検出
+
+        for name, ranges in self.colors.items():
+
+            object_number = 0
+
+            mask = np.zeros(
+                hsv.shape[:2],
+                dtype=np.uint8
+            )
+
+            for lower, upper in ranges:
+
+                color_mask = cv2.inRange(
+                    hsv,
+                    np.array(lower),
+                    np.array(upper)
+                )
+
+                mask = cv2.bitwise_or(
+                    mask,
+                    color_mask
+                )
+
+            # ノイズ除去
+            mask = cv2.morphologyEx(
+                mask,
+                cv2.MORPH_OPEN,
+                kernel
+            )
+
+            mask = cv2.morphologyEx(
+                mask,
+                cv2.MORPH_CLOSE,
+                kernel
+            )
+
+            # 前のフレームと比較して輪郭を安定させる
+            if name in self.previous_masks:
+
+                previous_mask = self.previous_masks[name]
+
+                if previous_mask.shape == mask.shape:
+
+                    mask = cv2.addWeighted(
+                        mask,
+                        0.6,
+                        previous_mask,
+                        0.4,
+                        0
+                    )
+
+                    _, mask = cv2.threshold(
+                        mask,
+                        127,
+                        255,
+                        cv2.THRESH_BINARY
+                    )
+
+            self.previous_masks[name] = mask.copy()
+
+            contours, _ = cv2.findContours(
+                mask,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE
+            )
+
+            # 検出した物体を処理
+
+            for contour in contours:
+
+                area = cv2.contourArea(contour)
+
+                if area < 500:
+                    continue
+
+
+                object_number += 1
+                object_name = f'{name}_{object_number}'
+
+                x, y, w, h = cv2.boundingRect(contour)
+
+
+# テトリス形状の判定
+
+                shape_name = classify_tetromino(contour)
+
+# 色名・番号・形状を表示
+                label = f'{object_name} {shape_name}'
+
+                cv2.putText(
+                    frame,
+                    label,
+                    (x, max(y - 10, 20)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.65,
+                    (0, 255, 255),
+                    2
+                )
+
+
+
+                # 色の枠の左上に番号を表示
+                label_y = max(y - 10, 20)
+
+                perimeter = cv2.arcLength(
+                    contour,
+                    True
+                )
+
+                approx = cv2.approxPolyDP(
+                    contour,
+                    0.01 * perimeter,
+                    True
+                )
+
+                # 物体の輪郭を描画
+                cv2.drawContours(
+                    frame,
+                    [approx],
+                    -1,
+                    (0, 255, 255),
+                    2
+                )
+
+                margin = 5
+
+                roi = hsv[
+                    y + margin:y + h - margin,
+                    x + margin:x + w - margin
+                ]
+
+                if roi.size == 0:
+                    continue
+
+                roi_smooth = cv2.GaussianBlur(
+                    roi,
+                    (5, 5),
+                    0
+                )
+
+                # 白い領域を検出
+
+                white_mask = cv2.inRange(
+                    roi_smooth,
+                    np.array([0, 0, 59]),
+                    np.array([179, 55, 255])
+                )
+
+                white_contours, _ = cv2.findContours(
+                    white_mask,
+                    cv2.RETR_EXTERNAL,
+                    cv2.CHAIN_APPROX_SIMPLE
+                )
+
+                for wc in white_contours:
+
+                    white_area = cv2.contourArea(wc)
+
+                    wx, wy, ww, wh = cv2.boundingRect(wc)
+
+                    roi_h, roi_w = roi.shape[:2]
+
+                    if white_area < 15:
+                        continue
+
+                    if ww > roi_w * 0.35:
+                        continue
+
+                    if wh > roi_h * 0.35:
+                        continue
+
+                    ratio = ww / float(wh)
+
+                    if ratio < 0.5 or ratio > 2.0:
+                        continue
+
+                    # ROI座標から画像全体の座標に変換
+                    wx += x + margin
+                    wy += y + margin
+
+                    white_cx = wx + ww // 2
+                    white_cy = wy + wh // 2
+
+                    # 白い領域を黄色い四角で囲む
+                    cv2.rectangle(
+                        frame,
+                        (wx, wy),
+                        (wx + ww, wy + wh),
+                        (0, 255, 255),
+                        2
+                    )
+
+                    # 白い領域の中心に黄色い点
+                    cv2.circle(
+                        frame,
+                        (white_cx, white_cy),
+                        5,
+                        (0, 255, 255),
+                        -1
+                    )
+
+                    # 深度を取得
+
+                    distance_m = self.get_depth(
+                        white_cx,
+                        white_cy,
+                        width,
+                        height
+                    )
+
+                    if distance_m is not None:
+
+                        depth_text = f'{distance_m:.3f} m'
+
+                    else:
+
+                        depth_text = '-- m'
+
+                    # X方向の実距離を計算
+
+                    if (
+                        distance_m is not None
+                        and self.fx is not None
+                        and self.cx is not None
+                    ):
+
+                        offset_x_m = (
+                            (white_cx - self.cx)
+                            * distance_m
+                            / self.fx
+                        )
+
+                        x_text = f'{offset_x_m:+.3f} m'
+
+                    else:
+
+                        x_text = '-- m'
+
+                    # 画面上部に表示する情報
+
+                    white_info.append(
+                        f'{object_name}  X: {x_text}  '
+                        f'Y(Depth): {depth_text}'
+                    )
+
+        # 情報を画面上部に表示
+
+        if white_info:
+
+            panel_height = 15 + len(white_info) * 30
+
+            cv2.rectangle(
+                frame,
+                (5, 5),
+                (750, panel_height),
+                (0, 0, 0),
+                -1
+            )
+
+            for i, text in enumerate(white_info):
+
+                cv2.putText(
+                    frame,
+                    text,
+                    (15, 30 + i * 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.65,
+                    (0, 255, 255),
+                    2
+                )
+
+        # 画像表示
+
+        cv2.imshow(
+            'Color Object Detection',
+            frame
+        )
+
+        cv2.waitKey(1)
+
+
+def main(args=None):
+
+    rclpy.init(args=args)
+
+    node = ColorObjectDetector()
+
+    try:
+        rclpy.spin(node)
+
+    except KeyboardInterrupt:
+        pass
+
+    finally:
+        node.destroy_node()
+        cv2.destroyAllWindows()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
