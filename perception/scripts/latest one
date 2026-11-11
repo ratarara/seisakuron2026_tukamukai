@@ -544,7 +544,7 @@ class ColorObjectDetector(Node):
                     # 画面上部に表示する情報
 
                     white_info.append(
-                        f'{object_name}  X: {x_text}  '
+                        f'{object_name}  '
                         f'Y(Depth): {depth_text}'
                     )
 
