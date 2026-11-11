@@ -1,0 +1,149 @@
+# 形状認識
+
+TETROMINOES = {
+    "I-TYPE": [
+        [1, 1, 1, 1]
+    ],
+
+    "L-TYPE": [
+        [1, 0],
+        [1, 0],
+        [1, 1]
+    ],
+
+    "Z-TYPE": [
+        [0, 1, 1],
+        [1, 1, 0]
+    ],
+}
+
+
+def trim_grid(grid):
+    """空白の行と列を取り除く"""
+
+    grid = np.array(grid, dtype=np.uint8)
+
+    rows = np.where(np.any(grid, axis=1))[0]
+    cols = np.where(np.any(grid, axis=0))[0]
+
+    if len(rows) == 0 or len(cols) == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
+
+    return grid[
+        rows[0]:rows[-1] + 1,
+        cols[0]:cols[-1] + 1
+    ]
+
+
+def grid_key(grid):
+    """マス目を比較用の文字列に変換"""
+
+    return tuple(
+        ''.join(str(int(v)) for v in row)
+        for row in grid
+    )
+
+
+def classify_tetromino(contour):
+    #輪郭からテトリス形状を判定する
+
+    x, y, w, h = cv2.boundingRect(contour)
+
+    if w <= 0 or h <= 0:
+        return "UNKNOWN"
+
+    # 輪郭の内部を白く塗りつぶす
+    mask = np.zeros((h, w), dtype=np.uint8)
+
+    shifted = contour.copy()
+    shifted[:, :, 0] -= x
+    shifted[:, :, 1] -= y
+
+    cv2.drawContours(
+        mask,
+        [shifted],
+        -1,
+        255,
+        -1
+    )
+
+    filled_area = cv2.countNonZero(mask)
+
+    # テトリスは4マスで構成されると仮定
+    cell_size = np.sqrt(filled_area / 4.0)
+
+    if cell_size < 2:
+        return "UNKNOWN"
+
+    cols = max(1, round(w / cell_size))
+    rows = max(1, round(h / cell_size))
+
+    # 正方形のマス目として成立するか確認
+    cell_w = w / cols
+    cell_h = h / rows
+
+    if abs(cell_w - cell_h) / max(cell_w, cell_h) > 0.35:
+        return "OTHER"
+
+    grid = []
+
+    # 各マスに物体が存在するか確認
+    for row in range(rows):
+
+        grid_row = []
+
+        for col in range(cols):
+
+            x1 = round(col * cell_w)
+            x2 = round((col + 1) * cell_w)
+
+            y1 = round(row * cell_h)
+            y2 = round((row + 1) * cell_h)
+
+            cell = mask[y1:y2, x1:x2]
+
+            if cell.size == 0:
+                grid_row.append(0)
+                continue
+
+            occupancy = (
+                cv2.countNonZero(cell) / cell.size
+            )
+
+            grid_row.append(
+                1 if occupancy >= 0.45 else 0
+            )
+
+        grid.append(grid_row)
+
+    grid = trim_grid(grid)
+
+    if grid.size == 0:
+        return "UNKNOWN"
+
+    # 登録された3種類と比較
+    for shape_name, template in TETROMINOES.items():
+
+        template = np.array(
+            template,
+            dtype=np.uint8
+        )
+
+        # 回転・反転も考慮
+        for mirrored in [False, True]:
+
+            candidate = template.copy()
+
+            if mirrored:
+                candidate = np.fliplr(candidate)
+
+            for _ in range(4):
+
+                candidate = trim_grid(candidate)
+
+                if grid_key(candidate) == grid_key(grid):
+                    return shape_name
+
+                candidate = np.rot90(candidate)
+
+    return "OTHER"
