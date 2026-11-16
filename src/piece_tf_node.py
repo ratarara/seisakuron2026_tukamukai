@@ -28,7 +28,9 @@ from tf2_ros import Buffer, TransformBroadcaster, TransformException, TransformL
 
 # 色の範囲（HSV、OpenCV の H は 0〜179）。perception/scripts/colorecog（堀さん）と同じ
 COLORS = {
-    'L': ([5, 100, 100], [25, 255, 255]),    # オレンジ
+    # オレンジ。D415 では色相 H が 4〜7 に出て、下限 5 だと領域が欠けて見つからなかった（2026-11-16）。
+    # 赤（Z）を使うときは、赤と重なるので見直す
+    'L': ([0, 100, 100], [25, 255, 255]),
     'S': ([30, 50, 40], [90, 255, 255]),     # 緑
     'I': ([90, 70, 50], [130, 255, 255]),    # 青（水色を含む）
 }

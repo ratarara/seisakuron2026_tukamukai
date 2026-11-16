@@ -34,7 +34,7 @@ RECOGNIZER_ARGS = {
 FILL_ARGS = {
     'step_by_step': ('false', 'true: confirm each motion with Enter (opens xterm)'),
     'speed_scale': ('0.3', 'speed scale 0.0-1.0'),
-    'observe_x': ('0.29', 'hand x [m] to look at the pieces (pose A)'),
+    'observe_x': ('0.24', 'hand x [m] to look at the pieces (pose A)'),
     'observe_y': ('0.17', 'hand y [m] to look at the pieces (pose A)'),
     'observe_z': ('0.30', 'hand height [m] to look at the pieces (pose A)'),
     'show_x': ('0.31', 'hand x [m] to show the case at the end (pose B)'),
@@ -42,6 +42,9 @@ FILL_ARGS = {
     'show_z': ('0.30', 'hand height [m] to show the case at the end (pose B)'),
     'show_at_end': ('true', 'move to pose B at the end'),
     'observe_wait_sec': ('5.0', 'wait this long [s] for the next piece at pose A'),
+    'refine_max_iter': ('2', 'look again from above the piece this many times (0 = off)'),
+    'grasp_check_min_deg': ('0.0', 'stop if the finger angle after grasping is below this'),
+    'pick_z': ('0.089', 'hand height [m] when grasping'),
     'case_x': ('0.22', 'x [m] of the case corner (outside of cell 0,0)'),
     'case_y': ('-0.04', 'y [m] of the case corner'),
     'case_yaw_deg': ('0.0', 'case yaw [deg]'),

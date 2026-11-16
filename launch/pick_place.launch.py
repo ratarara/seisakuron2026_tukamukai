@@ -78,7 +78,7 @@ NODE_ARGS = {
     ),
     'tf_wait_sec': ('5.0', float, 'fill_4x4 mode (tf): wait this long [s] for all pieces'),
     'tf_max_age_sec': ('5.0', float, 'fill_4x4 mode (tf): ignore tf older than this [s]'),
-    'observe_x': ('0.29', float, 'fill_4x4 (camera): hand x [m] to look at the pieces'),
+    'observe_x': ('0.24', float, 'fill_4x4 (camera): hand x [m] to look at the pieces'),
     'observe_y': ('0.17', float, 'fill_4x4 (camera): hand y [m] to look at the pieces'),
     'observe_z': ('0.30', float, 'fill_4x4 (camera): hand height [m] to look at the pieces'),
     'observe_yaw': ('-90.0', float, 'fill_4x4 (camera): hand yaw [deg] to look at the pieces'),
@@ -94,6 +94,20 @@ NODE_ARGS = {
     'observe_wait_sec': ('5.0', float, 'fill_4x4 (camera): wait this long [s] for the piece'),
     'case_margin': ('0.01', float, 'fill_4x4 (camera): pieces this close [m] to the case are '
                     'treated as already placed'),
+    'refine_max_iter': (
+        '2', int, 'fill_4x4 (camera): look again from above the piece this many times '
+        'before grasping (0 = off)',
+    ),
+    'refine_max_shift': (
+        '0.03', float, 'fill_4x4 (camera): ignore pieces farther than this [m] when looking again',
+    ),
+    'refine_done_mm': (
+        '2.0', float, 'fill_4x4 (camera): stop looking again when the shift is below this [mm]',
+    ),
+    'grasp_check_min_deg': (
+        '0.0', float, 'stop if the finger angle after grasping is below this [deg] '
+        '(empty hand). 0 = only print the angle',
+    ),
     'fill_lift_dz': ('0.08', float, 'fill_4x4 mode: how high to lift [m]'),
     'fill_place_open_deg': ('5.0', float, 'fill_4x4 mode: finger angle [deg] when releasing'),
     'fill_release_dz': ('0.007', float, 'fill_4x4 mode: release this much [m] above pick_z'),

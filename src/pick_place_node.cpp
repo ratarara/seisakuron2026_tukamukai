@@ -1014,6 +1014,9 @@ struct MotionConfig
   // つかむために下ろすときの手の傾きの目標 [deg]。指先が前（+x）へ傾くと正。実機では、
   // 水平を目標にしても指先が下がって本体を掴んだので（#80）、わざと傾けた向きを目標にする
   double grasp_tilt_front_deg;
+  // 握ったあと、指の角度がこれより小さければ「何もつかめていない」とみなして止める [deg]。
+  // 0 以下なら止めない（角度の表示だけ）。取っ手（厚さ 4 mm）を挟むと指は閉じきらない
+  double grasp_check_min_deg;
 };
 
 // 手の向きを選ぶ（腕は動かさない）。届く候補がなければ false
@@ -1084,6 +1087,22 @@ bool pick_and_place_piece(
       return step(
         robot.move_hand_compensated(target, c.speed, c.comp, offset, logger, what), what);
     };
+  // 握ったあとの指の角度を表示し、閉じきっていたら（空振り）指を開いて持ち上げ、止める
+  const auto check_grasp = [&]() {
+      const double deg = angles::to_degrees(robot.current_gripper_angle());
+      if (std::isnan(deg)) {return true;}  // 読めないときは止めない
+      const bool ok = c.grasp_check_min_deg <= 0.0 || deg >= c.grasp_check_min_deg;
+      RCLCPP_INFO(
+        logger, "[pick_move] finger angle after grasp: %.2f deg (check %s %.2f)", deg,
+        c.grasp_check_min_deg <= 0.0 ? "off," : (ok ? "OK >=" : "FAILED <"),
+        c.grasp_check_min_deg);
+      if (!ok) {
+        RCLCPP_ERROR(logger, "[pick_move] nothing in the hand; open and lift");
+        robot.move_gripper_angle(angles::from_degrees(c.pick_open_deg));
+        straight(above, "lift (empty)");
+      }
+      return ok;
+    };
   return
     // 真上へは、腕を「平らな形」（ねじりがほぼ 0）にして移動する。左右へ運ぶとき、
     // ねじりの関節が制限に当たって途中で止まらないように（move_arm_planar）
@@ -1097,6 +1116,7 @@ bool pick_and_place_piece(
     step(robot.move_gripper_angle(angles::from_degrees(c.pick_open_deg)), "open") &&
     compensated_tilted(pick, at_pick, "go down") &&
     step(robot.move_gripper_angle(angles::from_degrees(c.grasp_deg)), "grasp") &&
+    check_grasp() &&
     straight(above, "lift") &&
     compensated(place_above_before_turn, at_place, "move sideways") &&
     (std::abs(yaw.wrist_turn) < 0.5 ||
@@ -1268,7 +1288,85 @@ struct ObserveConfig
   double wait_sec;         // 撮影姿勢で、ピースが見つかるまで待つ時間 [s]
   double case_margin;      // ケースの周りのこの幅 [m] にあるピースは、置いたものとみなしてつかまない
   double show_hold_sec;    // show の姿勢で止まっている時間 [s]
+  // つかむ前に、ピースの真上（持ち上げる高さ）で撮り直して位置と向きを直す回数（0 = しない）。
+  // 撮影姿勢 A は遠くて斜めから見るので、近くの真上から見た方が正確（バナナ班の color_sorting と同じ考え）
+  int refine_max_iter;
+  double refine_max_shift;  // 撮り直しで、これより遠くに見えたピースは別のものとみなす [m]
+  double refine_done;       // 直す量がこれより小さくなったら撮り直しをやめる [m]
 };
+
+// 撮影姿勢に着いたあと（settle_sec 後）に撮った画像の認識結果を待つ。見つからなければ空
+std::vector<tukamukai::DetectedPiece> wait_fresh_pieces(
+  const rclcpp::Node::SharedPtr & node, const tf2_ros::Buffer & buffer, const ObserveConfig & o)
+{
+  const auto arrived = node->now();
+  const int64_t min_stamp = (arrived + rclcpp::Duration::from_seconds(o.settle_sec)).nanoseconds();
+  const auto deadline = arrived + rclcpp::Duration::from_seconds(o.settle_sec + o.wait_sec);
+  for (;; ) {
+    const auto by_stamp = read_piece_tf(node, buffer, "base_link", 1e9);
+    if (!by_stamp.empty() && by_stamp.rbegin()->first >= min_stamp) {
+      return by_stamp.rbegin()->second;
+    }
+    if (node->now() > deadline) {return {};}
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
+// つかむ前に、ピースの真上へ動いて撮り直し、m の位置と向き（と yaw）を直す。
+// 真上で見つからない・届かないときは、もとの値のまま（撮影姿勢 A の結果でつかむ）
+void refine_from_above(
+  PickAndPlace & robot, const rclcpp::Logger & logger, const rclcpp::Node::SharedPtr & node,
+  const tf2_ros::Buffer & buffer, const tukamukai::CaseFrame & frame, const ObserveConfig & o,
+  const MotionConfig & c, PieceMove & m, tukamukai::GraspYaw & yaw)
+{
+  for (int iter = 0; iter < o.refine_max_iter; ++iter) {
+    const HandPose hover{m.pick_x, m.pick_y, c.pick_z + c.dz, -180.0, 0.0, yaw.pick_hand};
+    if (!robot.move_arm_planar(to_pose(hover), c.planar_tol_deg, logger, "look from above")) {
+      RCLCPP_WARN(logger, "[refine] could not move above the piece; use the first detection");
+      return;
+    }
+    const auto detected = wait_fresh_pieces(node, buffer, o);
+    // 同じ種類で、今の推定に一番近いもの
+    const tukamukai::DetectedPiece * best = nullptr;
+    double best_dist = o.refine_max_shift;
+    for (const auto & d : detected) {
+      if (d.kind != m.kind || tukamukai::in_case(d.x, d.y, frame, 4, 4, o.case_margin)) {
+        continue;
+      }
+      const double dist = std::hypot(d.x - m.pick_x, d.y - m.pick_y);
+      if (dist < best_dist) {
+        best_dist = dist;
+        best = &d;
+      }
+    }
+    if (best == nullptr) {
+      RCLCPP_WARN(
+        logger, "[refine] %c not seen within %.0f mm from above (%zu pieces seen); "
+        "use the current estimate", m.kind, o.refine_max_shift * 1000.0, detected.size());
+      return;
+    }
+    // 向きは、今の推定と近いときだけ使う（形の対称性で 180° 違う値が出ることがあるため）
+    const double new_deg = angles::to_degrees(best->yaw);
+    const double turn = normalize_deg(new_deg - m.pick_piece_deg);
+    PieceMove next = m;
+    next.pick_x = best->x;
+    next.pick_y = best->y;
+    if (std::abs(turn) < 20.0) {next.pick_piece_deg = new_deg;}
+    tukamukai::GraspYaw next_yaw{};
+    if (!choose_yaw_for(robot, logger, next, c, next_yaw)) {
+      RCLCPP_WARN(logger, "[refine] refined pose is out of reach; keep the previous one");
+      return;
+    }
+    RCLCPP_INFO(
+      logger, "[refine] %d: (%.3f, %.3f) yaw %.1f -> (%.3f, %.3f) yaw %.1f  "
+      "(shift %.1f mm, turn %.1f deg%s)", iter + 1, m.pick_x, m.pick_y, m.pick_piece_deg,
+      next.pick_x, next.pick_y, next.pick_piece_deg, best_dist * 1000.0, turn,
+      std::abs(turn) < 20.0 ? "" : ", yaw not used");
+    m = next;
+    yaw = next_yaw;
+    if (best_dist < o.refine_done) {return;}
+  }
+}
 
 // 1 個ずつ「撮影姿勢で撮る → 次に置く種類のピースを 1 個つかんで置く」を繰り返す。
 // 毎回撮り直すので、ピースが動いても次の画像の位置を使える。ケースの中のピースはつかまない
@@ -1348,7 +1446,7 @@ bool run_fill_4x4_observe(
     }
 
     const auto target = tukamukai::placement_in_robot(p, frame);
-    const PieceMove m{
+    PieceMove m{
       p.kind, chosen->x, chosen->y, angles::to_degrees(chosen->yaw),
       target.x, target.y, angles::to_degrees(target.yaw)};
     tukamukai::GraspYaw yaw{};
@@ -1356,6 +1454,7 @@ bool run_fill_4x4_observe(
       RCLCPP_ERROR(logger, "[fill] %s is out of reach", chosen->frame.c_str());
       return false;
     }
+    refine_from_above(robot, logger, node, buffer, frame, o, c, m, yaw);
     RCLCPP_INFO(
       logger, "[fill] %zu: %c  %s at (%.3f, %.3f) yaw %.0f  ->  place (%.3f, %.3f) yaw %.0f "
       "(wrist turn %.0f)", i + 1, p.kind, chosen->frame.c_str(), m.pick_x, m.pick_y,
@@ -1565,7 +1664,7 @@ int main(int argc, char ** argv)
   // fill_4x4（piece_source:=camera）：撮影姿勢 A（置き場を見る）と B（ケースを見せる）。
   // 手を真下に向けた姿勢。2026-11-02 に、写る範囲と届くかを Mock で確かめた値（docs/real_robot.md）
   const ObserveConfig observe_cfg{
-    {node->get_parameter_or<double>("observe_x", 0.29),
+    {node->get_parameter_or<double>("observe_x", 0.24),
       node->get_parameter_or<double>("observe_y", 0.17),
       node->get_parameter_or<double>("observe_z", 0.30), -180.0, 0.0,
       node->get_parameter_or<double>("observe_yaw", -90.0)},
@@ -1577,7 +1676,10 @@ int main(int argc, char ** argv)
     node->get_parameter_or<double>("observe_settle_sec", 1.0),
     node->get_parameter_or<double>("observe_wait_sec", 5.0),
     node->get_parameter_or<double>("case_margin", 0.01),
-    node->get_parameter_or<double>("show_hold_sec", 3.0)};
+    node->get_parameter_or<double>("show_hold_sec", 3.0),
+    static_cast<int>(node->get_parameter_or<int64_t>("refine_max_iter", 2)),
+    node->get_parameter_or<double>("refine_max_shift", 0.03),
+    node->get_parameter_or<double>("refine_done_mm", 2.0) / 1000.0};
   // tf を受け取り始めるのは時間がかかるので、最初に作っておく
   const auto tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
   const auto tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer, node, false);
@@ -1644,7 +1746,8 @@ int main(int argc, char ** argv)
   const MotionConfig motion{
     PICK.z, fill_release_dz, fill_lift_dz, lift_speed, pick_grasp_deg, gripper_open_deg,
     fill_place_open_deg, hand_offset_deg, planar_tol_deg, comp,
-    node->get_parameter_or<double>("grasp_tilt_front_deg", -1.5)};
+    node->get_parameter_or<double>("grasp_tilt_front_deg", -1.5),
+    node->get_parameter_or<double>("grasp_check_min_deg", 0.0)};
 
   // lift_place モードは、今の姿勢とグリッパのまま始める（home に戻らない）
   const bool keep_start = (mode == "lift_place");
