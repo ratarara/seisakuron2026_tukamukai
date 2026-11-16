@@ -17,7 +17,9 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.actions import (
+    DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, OpaqueFunction, TimerAction,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -50,11 +52,62 @@ FILL_ARGS = {
     'case_yaw_deg': ('0.0', 'case yaw [deg]'),
 }
 
+# 置き方の表示だけに使う
+LAYOUT_ARGS = {
+    'ruler_dx': ('0.036', 'ruler (from the base corner) x - robot x [m] (measured once)'),
+    'ruler_dy': ('0.054', 'ruler (from the base corner) y - robot y [m] (measured once)'),
+}
+
+# ピースを置く場所：取っ手の中心のロボットの座標 [m]。向きは自由。
+# 撮影姿勢 A（x = 0.24）で写り、手が届く（実機では x = 0.20〜0.30 m が安全）ように決めた
+PIECE_SPOTS = [
+    ('I（水色）', 0.21, 0.11),
+    ('S（緑）', 0.29, 0.11),
+    ('L（オレンジ）', 0.21, 0.20),
+    ('L（オレンジ）', 0.29, 0.20),
+]
+CASE_CELLS = 4
+CELL = 0.02
+
+
+def layout_message(context):
+    """起動したときに、ケースとピースを置く場所を表示する."""
+    def value(name):
+        return float(LaunchConfiguration(name).perform(context))
+
+    cx, cy = value('case_x'), value('case_y')
+    dx, dy = value('ruler_dx'), value('ruler_dy')
+    size = CASE_CELLS * CELL
+
+    def ruler(x, y):
+        side = '左' if y + dy >= 0 else '右'
+        return f'前 {(x + dx) * 1000:.0f} mm・{side} {abs(y + dy) * 1000:.0f} mm'
+
+    lines = [
+        '',
+        '========== この位置に置いてください ==========',
+        '（ロボットの座標 [m]。x が前、y が左。認識画像のラベル「-> (x, y)」で確かめる）',
+        f'ケース：マス (0, 0) の外側の角を ({cx:.3f}, {cy:.3f})。'
+        f'マスは x {cx:.3f}〜{cx + size:.3f}、y {cy:.3f}〜{cy + size:.3f}',
+        f'        定規なら {ruler(cx, cy)}',
+        'ピース（取っ手の中心、向きは自由）：',
+    ]
+    for name, x, y in PIECE_SPOTS:
+        lines.append(f'  {name}  ({x:.2f}, {y:.2f})   定規なら {ruler(x, y)}')
+    lines += [
+        f'定規：土台の右下の頂点から。前 = x + {dx * 1000:.0f} mm、左 = y + {dy * 1000:.0f} mm'
+        '（2026-11-16 に 1 回測った目安。ずれるときは認識画像の値に合わせる）',
+        '==============================================',
+        '',
+    ]
+    return [LogInfo(msg='\n'.join(lines))]
+
 
 def generate_launch_description():
     args = [
         DeclareLaunchArgument(name, default_value=default, description=description)
-        for name, (default, description) in {**RECOGNIZER_ARGS, **FILL_ARGS}.items()
+        for name, (default, description) in
+        {**RECOGNIZER_ARGS, **FILL_ARGS, **LAYOUT_ARGS}.items()
     ]
     args.append(DeclareLaunchArgument(
         'view', default_value='true', description='true: show the recognition image'))
@@ -89,6 +142,7 @@ def generate_launch_description():
 
     # 認識のノードが起動してから動き始める
     return LaunchDescription(args + [
+        OpaqueFunction(function=layout_message),
         recognizer,
         viewer,
         TimerAction(period=2.0, actions=[fill]),

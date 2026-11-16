@@ -1451,7 +1451,10 @@ bool run_fill_4x4_observe(
       target.x, target.y, angles::to_degrees(target.yaw)};
     tukamukai::GraspYaw yaw{};
     if (!choose_yaw_for(robot, logger, m, c, yaw)) {
-      RCLCPP_ERROR(logger, "[fill] %s is out of reach", chosen->frame.c_str());
+      RCLCPP_ERROR(
+        logger, "[fill] %s at (%.3f, %.3f) yaw %.0f is out of reach. Put the pieces at "
+        "x = 0.20-0.30 m (the label in the recognition image shows x, y)", chosen->frame.c_str(),
+        chosen->x, chosen->y, angles::to_degrees(chosen->yaw));
       return false;
     }
     refine_from_above(robot, logger, node, buffer, frame, o, c, m, yaw);
