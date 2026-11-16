@@ -61,6 +61,7 @@ source /opt/ros/jazzy/setup.bash
 source ~/realsense_ws/install/setup.bash
 ros2 run realsense_image_viewer image_listener
 ```
+これで、実際に再生画面が表示されます。
 
 ### 録画データの共有方法
 録画データを共有する場合、非常に大きいサイズとなっている可能性があるのでgoogle driveでのリンク共有をおすすめします。  
@@ -81,9 +82,45 @@ google driveを開いたら、d435_recording.zipの名前で保存されてい�
 なお、zip形式にしてもサイズが小さくなるとは限りません。  
 
   
-  
-## 異なる色を認識したいとき
 
+## 作成したコードを録画で試したいとき
+作成したコードを録画したもので試したいときは、以下に手順に従って実行してください。 
+```
+cd ~/realsense_ws
+ros2 bag play ~/realsense_experiment/d435_recording --loop
+```
+別のターミナルで以下を実行してください。
+```
+nano ~/realsense_ws/src/realsense_image_viewer/realsense_image_viewer/color_object_detector.py
+//color_object_detector.pyという名前のファイルです。中身はきちんと保存してください。
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select realsense_image_viewer
+```
+上記２つの手順に関しては、どちらを先に行っても大丈夫ですが、何回も自作コードを実行したい場合は一番目の手順で再生中のものを一々終了させる必要はありません。
+次に、別のターミナルで以下を実行してください。  
+```
+cd realsense_bags
+source /opt/ros/jazzy/setup.bash
+source ~/realsense_ws/install/setup.bash
+//ターミナルを新しく開いたときには上の3つのコマンドが必要ですが、既に１度実行後には必要ありません。下のコマンドを実行してください。
+ros2 run realsense_image_viewer color_object_detector
+```
+繰り返し行う場合は、録画データを裏で再生させつつ以下の手順を繰り返すことになります。  
+
+ros2 run realsense_image_viewer color_object_detectorを終了させる。（Ctrl+C）
+```
+nano ~/realsense_ws/src/realsense_image_viewer/realsense_image_viewer/color_object_detector.py
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select realsense_image_viewer
+```
+```
+//別のターミナルで実行してください。
+ros2 run realsense_image_viewer color_object_detector
+```
+
+
+
+## 異なる色を認識したいとき
 色相の値を変更することによって指定する色を変更することができます。  
   
 例:  
