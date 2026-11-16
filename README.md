@@ -140,8 +140,7 @@ ros2 launch tukamukai solver_viz.launch.py preset:=8x8  # 8×8
 ```
 seisakuron2026_tukamukai/
 ├── README.md              # このファイル
-├── LICENSE                # ライセンス（Apache-2.0）
-├── NOTICE                 # 著作権の表示
+├── LICENSE                # ライセンス（GPL-3.0）
 ├── CLAUDE.md              # Claude Code 向けのプロジェクトメモ
 ├── .gitignore             # Git で管理しないファイルの一覧
 ├── package.xml            # ROS 2 パッケージの情報と依存関係
@@ -190,8 +189,7 @@ seisakuron2026_tukamukai/
 |---|---|---|
 | `README.md` | リポジトリの説明書 | 概要・セットアップ・使い方・ルールをまとめたもの。GitHub のトップに表示される。手順や構成が変わったら更新する |
 | `CLAUDE.md` | Claude Code 向けのメモ | やりたいこと、処理の流れ、ソルバーの制約、ハードの案、開発ルール、TODO。Claude Code が作業前に読む。方針が決まったら更新する |
-| `LICENSE` | ライセンスの本文 | Apache License 2.0。誰でも使う・改変する・配ることができる。そのとき、著作権の表示（`NOTICE`）とライセンスを残し、変えたファイルには変えたことを書く |
-| `NOTICE` | 著作権の表示 | 著作権者（つかむ会と 4 人の名前）。コードを流用した人は、これを一緒に残す |
+| `LICENSE` | ライセンスの本文 | GNU General Public License v3.0。誰でも使う・改変する・配ることができる。ただし、改変したものを配るときは、ソースコードも公開し、同じ GPL-3.0 にする必要がある |
 | `docs/ros2_setup.md` | ROS 2 環境構築手順 | 何も入っていない Ubuntu 24.04 に ROS 2 Jazzy の開発環境を作る手順。新しいメンバーや PC の再インストール時に使う |
 | `docs/recognition_without_camera.md` | カメラなしで認識を作る手順 | RealSense で rosbag を記録し、その記録と写真で HSV のしきい値・輪郭・ロボットの座標への変換を作る。カメラを使える時間が限られているときに使う |
 
@@ -266,7 +264,8 @@ Milestone は3回の発表に対応しています。
 
 ## ライセンス・謝辞
 
-- 本リポジトリは [Apache License 2.0](LICENSE) で公開しています。著作権の表示は [NOTICE](NOTICE) にあります。後輩やほかのチームも、ライセンスに従って自由に使ってかまいません
+- 本リポジトリは [GNU General Public License v3.0](LICENSE)（GPL-3.0-or-later）で公開しています。後輩やほかのチームも、ライセンスに従って自由に使ってかまいません。改変したものを配るときは、ソースコードを公開し、同じライセンスにしてください
+- Copyright (C) 2026 つかむ会（比屋根佳歩、石川奈々美、堀円香、キンジュンウ）
 - 本リポジトリは以下を利用しています。
   - [rt-net/crane_x7_ros](https://github.com/rt-net/crane_x7_ros)：Apache License 2.0
   - [rt-net/crane_x7_description](https://github.com/rt-net/crane_x7_description)：RT社の独自ライセンス（[LICENSE](https://github.com/rt-net/crane_x7_description/blob/HEAD/LICENSE)）。研究開発目的での使用は許諾されていますが、商業目的での使用には RT社への問い合わせが必要です

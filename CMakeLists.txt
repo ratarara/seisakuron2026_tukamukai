@@ -74,7 +74,7 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
   # 著作権表示と cpplint の著作権チェックは、全ファイルの先頭に著作権表示を入れるまでスキップする
-  # （ライセンスは Apache-2.0。LICENSE と NOTICE を見る）
+  # （ライセンスは GPL-3.0-or-later。LICENSE を見る）
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
   # perception/ は認識の試作の置き場なので、書き方のチェックの対象から外す（perception/README.md）

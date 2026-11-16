@@ -91,7 +91,7 @@ colcon test --packages-select tukamukai && colcon test-result --verbose
 
 ## 開発ルール
 
-- ライセンスは **Apache-2.0**（`LICENSE`、著作権の表示は `NOTICE`、2026-11-09 決定）
+- ライセンスは **GPL-3.0-or-later**（`LICENSE`、2026-11-16 に Apache-2.0 から変更）。著作権者は「2026 つかむ会（比屋根佳歩、石川奈々美、堀円香、キンジュンウ）」
 - PR と main への push のたびに、GitHub Actions（`.github/workflows/build_and_test.yml`）が `ros:jazzy-ros-base` の上でビルドと `colcon test` を行う。crane_x7_* と realsense2_camera は rosdep で入らない・起動にしか使わないので飛ばしている。ビルドに新しい依存を足すときは、rosdep で入るか確かめる
 - `main` に直接 push しない。作業ごとに `feature/<内容>` ブランチを切って PR でマージ
 - PR の説明に `Closes #<Issue番号>` を書いて Issue と紐づける
@@ -119,4 +119,4 @@ colcon test --packages-select tukamukai && colcon test-result --verbose
 - 先輩のリポジトリをベースにする場合、元リポジトリ・ライセンス・差分を README に記載
 - `.gitignore` がまだない（`build/` `install/` `log/` を入れる）
 - 余裕があれば：認識結果と解の画面表示（デモ用）
-- 著作権表示のチェック（ament_copyright）はスキップ中。全ファイルの先頭に Apache-2.0 の著作権表示を入れたら、CMakeLists.txt のスキップを外す
+- 著作権表示のチェック（ament_copyright）はスキップ中。全ファイルの先頭に GPL-3.0 の著作権表示を入れたら、CMakeLists.txt のスキップを外す
