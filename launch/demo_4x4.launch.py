@@ -46,7 +46,7 @@ FILL_ARGS = {
     'observe_wait_sec': ('5.0', 'wait this long [s] for the next piece at pose A'),
     'refine_max_iter': ('2', 'look again from above the piece this many times (0 = off)'),
     'grasp_check_min_deg': ('0.0', 'stop if the finger angle after grasping is below this'),
-    'pick_z': ('0.089', 'hand height [m] when grasping'),
+    'pick_z': ('0.109', 'hand height [m] when grasping'),
     'case_x': ('0.22', 'x [m] of the case corner (outside of cell 0,0)'),
     'case_y': ('-0.04', 'y [m] of the case corner'),
     'case_yaw_deg': ('0.0', 'case yaw [deg]'),
@@ -54,8 +54,8 @@ FILL_ARGS = {
 
 # 置き方の表示だけに使う
 LAYOUT_ARGS = {
-    'ruler_dx': ('0.036', 'ruler (from the base corner) x - robot x [m] (measured once)'),
-    'ruler_dy': ('0.054', 'ruler (from the base corner) y - robot y [m] (measured once)'),
+    'ruler_dx': ('0.0', 'ruler (from the base corner) x - robot x [m] (measured once)'),
+    'ruler_dy': ('0.0', 'ruler (from the base corner) y - robot y [m] (measured once)'),
 }
 
 # ピースを置く場所：取っ手の中心のロボットの座標 [m]。向きは自由。

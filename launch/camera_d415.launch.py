@@ -26,10 +26,12 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-# 名前 -> (既定値, 説明)。crane_x7_description（use_d435）と同じ取り付け位置
+# 名前 -> (既定値, 説明)。もとは crane_x7_description（use_d435）と同じ (0, 0.032, 0.0191)。
+# 2026-11-16 に、定規で測った 4 ピースの位置と、撮影姿勢 A で認識した位置を比べ、
+# 認識が平均 (-50.5, -53.3) mm ずれていたので直し、もう一度測って残り (+5, +5) mm も直した
 MOUNT_ARGS = {
-    'mount_x': ('0.0', 'x [m] of the camera bottom screw in crane_x7_gripper_base_link'),
-    'mount_y': ('0.032', 'y [m] of the camera bottom screw'),
+    'mount_x': ('-0.048', 'x [m] of the camera bottom screw in crane_x7_gripper_base_link'),
+    'mount_y': ('-0.014', 'y [m] of the camera bottom screw'),
     'mount_z': ('0.0191', 'z [m] of the camera bottom screw'),
     'mount_roll': (str(math.radians(-90)), 'roll [rad] of the camera'),
     'mount_pitch': (str(math.radians(-90)), 'pitch [rad] of the camera'),
