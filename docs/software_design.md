@@ -111,7 +111,7 @@ ros2 launch crane_x7_examples camera_example.launch.py example:='color_detection
 | 使うソフト | **gtest**（C++ のテスト）、`colcon test`、**Gazebo + RViz**、実機 |
 | 順番 | 進め方と記録の形を決める（#56）→ ソルバーのテストを追加（#57）→ 動作（#58）→ 認識（#59）→ 通し（#60）→ 繰り返し試験（#37） |
 | 記録 | `docs/tests/` に、日付・確かめたもの・条件・結果を表で |
-| 余裕があれば | PR のたびにテストを自動で走らせる（GitHub Actions、#61） |
+| 自動テスト | PR のたびに GitHub Actions がビルドと `colcon test` を行う（`.github/workflows/build_and_test.yml`、#61） |
 
 ## データの形式（案、#29 で決める）
 
